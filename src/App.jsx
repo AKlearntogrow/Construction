@@ -3,6 +3,7 @@ import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
 import Capture from './pages/Capture'
+import ChangeOrders from './pages/ChangeOrders'
 
 function AppContent() {
   const { darkMode } = useTheme()
@@ -18,7 +19,7 @@ function AppContent() {
       
       {currentPage === 'dashboard' && <Dashboard />}
       {currentPage === 'capture' && <Capture />}
-      {currentPage === 'change-orders' && <Dashboard />} {/* Placeholder for now */}
+      {currentPage === 'change-orders' && <ChangeOrders />}
     </div>
   )
 }
