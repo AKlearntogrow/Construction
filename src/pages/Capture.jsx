@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Mic, MicOff, FileText, Clock, MapPin, Loader2, Users, Package, Wrench } from 'lucide-react'
+import { Mic, MicOff, FileText, Clock, MapPin, Loader2, Users, Package, Wrench, CheckCircle, AlertCircle } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { createTicket } from '../services/ticketService';
 
 export default function Capture() {
   const { darkMode } = useTheme()
@@ -9,6 +10,9 @@ export default function Capture() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [extractedData, setExtractedData] = useState(null)
   const [error, setError] = useState(null)
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const startRecording = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -58,6 +62,8 @@ export default function Capture() {
     setTranscript('')
     setExtractedData(null)
     setError(null)
+    setSaveError(null)
+    setSaveSuccess(false)
   }
 
   const processWithAI = async () => {
@@ -88,6 +94,51 @@ export default function Capture() {
       setIsProcessing(false)
     }
   }
+
+  const handleSaveTicket = async () => {
+    console.log('Save button clicked!');
+    if (!extractedData) {
+      setSaveError('No ticket data to save');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      // Transform extractedData to match database schema
+      const ticketData = {
+        description: extractedData.description || extractedData.summary || '',
+        location: extractedData.location || '',
+        cost_code: extractedData.cost_code_suggestion || extractedData.costCode || '',
+        project_name: extractedData.project || 'Default Project',
+        labor: extractedData.labor ? [extractedData.labor] : [],
+        materials: extractedData.materials || [],
+        original_transcript: transcript,
+        compliance_notes: extractedData.compliance || extractedData.complianceNotes || '',
+        status: 'pending',
+      };
+
+      const savedTicket = await createTicket(ticketData);
+      
+      setSaveSuccess(true);
+      console.log('Ticket saved:', savedTicket);
+      
+      // Reset form after 2 seconds
+      setTimeout(() => {
+        setTranscript('');
+        setExtractedData(null);
+        setSaveSuccess(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Failed to save ticket:', error);
+      setSaveError(error.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-8">
@@ -270,9 +321,42 @@ export default function Capture() {
                 </div>
               </div>
 
-              <button className="w-full mt-4 px-4 py-3 rounded-xl text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-colors">
-                Save T&M Ticket
+              {/* Save Button with loading/success states */}
+              <button 
+                onClick={handleSaveTicket}
+                disabled={isSaving || saveSuccess}
+                className={`w-full mt-4 px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                  saveSuccess
+                    ? 'bg-green-500 text-white'
+                    : isSaving
+                    ? 'bg-gray-400 cursor-not-allowed text-white'
+                    : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600'
+                }`}
+              >
+                {saveSuccess ? (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    Ticket Saved!
+                  </>
+                ) : isSaving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save T&M Ticket'
+                )}
               </button>
+
+              {/* Error message */}
+              {saveError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <p className="text-red-400 text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {saveError}
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <div className={`h-64 flex flex-col items-center justify-center ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
