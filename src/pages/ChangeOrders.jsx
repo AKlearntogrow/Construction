@@ -7,6 +7,7 @@ import {
   getChangeOrderStats,
   calculateVariance 
 } from '../services/changeOrderService'
+import { getActiveProjects } from '../services/projectService'
 import { 
   Plus, 
   Loader2, 
@@ -19,7 +20,9 @@ import {
   CheckCircle,
   XCircle,
   Edit3,
-  ChevronRight
+  ChevronRight,
+  Building2,
+  Filter
 } from 'lucide-react'
 import ChangeOrderModal from '../components/ChangeOrderModal'
 
@@ -27,6 +30,7 @@ export default function ChangeOrders() {
   const { darkMode } = useTheme()
   
   const [changeOrders, setChangeOrders] = useState([])
+  const [projects, setProjects] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -38,6 +42,7 @@ export default function ChangeOrders() {
   
   // Filter state
   const [statusFilter, setStatusFilter] = useState('all')
+  const [projectFilter, setProjectFilter] = useState('all')
 
   useEffect(() => {
     fetchData()
@@ -48,13 +53,15 @@ export default function ChangeOrders() {
       setLoading(true)
       setError(null)
       
-      const [coData, statsData] = await Promise.all([
+      const [coData, statsData, projectsData] = await Promise.all([
         getAllChangeOrders(),
-        getChangeOrderStats()
+        getChangeOrderStats(),
+        getActiveProjects()
       ])
       
       setChangeOrders(coData)
       setStats(statsData)
+      setProjects(projectsData)
     } catch (err) {
       console.error('Failed to fetch change orders:', err)
       setError(err.message)
@@ -98,10 +105,33 @@ export default function ChangeOrders() {
     }
   }
 
-  // Filter change orders
-  const filteredCOs = statusFilter === 'all' 
-    ? changeOrders 
-    : changeOrders.filter(co => co.status === statusFilter)
+  // Filter change orders by status AND project
+  const filteredCOs = changeOrders.filter(co => {
+    const statusMatch = statusFilter === 'all' || co.status === statusFilter
+    const projectMatch = projectFilter === 'all' || co.project_id === projectFilter
+    return statusMatch && projectMatch
+  })
+
+  // Get project name by id
+  const getProjectName = (projectId) => {
+    const project = projects.find(p => p.id === projectId)
+    return project ? `${project.project_code} - ${project.name}` : '—'
+  }
+
+  // Calculate filtered stats
+  const filteredStats = {
+    total: filteredCOs.length,
+    draft: filteredCOs.filter(co => co.status === 'draft').length,
+    submitted: filteredCOs.filter(co => co.status === 'submitted').length,
+    approved: filteredCOs.filter(co => co.status === 'approved').length,
+    rejected: filteredCOs.filter(co => co.status === 'rejected').length,
+    totalOriginal: filteredCOs.reduce((sum, co) => sum + parseFloat(co.original_amount || 0), 0),
+    totalCurrent: filteredCOs.reduce((sum, co) => sum + parseFloat(co.current_amount || 0), 0),
+  }
+  filteredStats.totalVariance = filteredStats.totalCurrent - filteredStats.totalOriginal
+  filteredStats.variancePercent = filteredStats.totalOriginal > 0 
+    ? ((filteredStats.totalVariance / filteredStats.totalOriginal) * 100).toFixed(1)
+    : 0
 
   // Status badge component
   const StatusBadge = ({ status }) => {
@@ -142,6 +172,12 @@ export default function ChangeOrders() {
     )
   }
 
+  const inputStyles = `px-3 py-2 rounded-lg border transition-colors ${
+    darkMode 
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+      : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
+  } outline-none`
+
   return (
     <main className="max-w-7xl mx-auto px-6 py-8">
       {/* Header */}
@@ -151,42 +187,75 @@ export default function ChangeOrders() {
             Change Orders
           </h1>
           <p className={`mt-1 ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
-            {stats?.total || 0} total • {stats?.submitted || 0} awaiting approval
+            {filteredStats.total} total • {filteredStats.submitted} awaiting approval
           </p>
         </div>
         <button
           onClick={handleCreateNew}
-          className="px-4 py-2 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center gap-2"
+          disabled={projects.length === 0}
+          className="px-4 py-2 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus className="w-5 h-5" />
           New Change Order
         </button>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <div className={`rounded-xl p-4 ${darkMode ? 'bg-white/10' : 'bg-white border border-slate-200'}`}>
-            <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>DRAFT</p>
-            <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>{stats.draft}</p>
+      {/* Project Filter */}
+      <div className={`rounded-xl p-4 mb-6 ${
+        darkMode ? 'bg-white/5 border border-white/10' : 'bg-white border border-slate-200'
+      }`}>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Building2 className={`w-5 h-5 ${darkMode ? 'text-white/40' : 'text-slate-400'}`} />
+            <span className={`text-sm font-medium ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+              Filter by Project:
+            </span>
           </div>
-          <div className={`rounded-xl p-4 ${darkMode ? 'bg-blue-500/10' : 'bg-blue-50 border border-blue-200'}`}>
-            <p className={`text-xs font-medium text-blue-500`}>SUBMITTED</p>
-            <p className={`text-2xl font-bold text-blue-500`}>{stats.submitted}</p>
-          </div>
-          <div className={`rounded-xl p-4 ${darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50 border border-emerald-200'}`}>
-            <p className={`text-xs font-medium text-emerald-500`}>APPROVED</p>
-            <p className={`text-2xl font-bold text-emerald-500`}>{stats.approved}</p>
-          </div>
-          <div className={`rounded-xl p-4 ${darkMode ? 'bg-red-500/10' : 'bg-red-50 border border-red-200'}`}>
-            <p className={`text-xs font-medium text-red-500`}>REJECTED</p>
-            <p className={`text-2xl font-bold text-red-500`}>{stats.rejected}</p>
-          </div>
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className={`${inputStyles} min-w-[250px]`}
+          >
+            <option value="all">All Projects</option>
+            {projects.map(project => (
+              <option key={project.id} value={project.id}>
+                {project.project_code} - {project.name}
+              </option>
+            ))}
+          </select>
+          {projectFilter !== 'all' && (
+            <button
+              onClick={() => setProjectFilter('all')}
+              className={`text-sm ${darkMode ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}
+            >
+              Clear filter
+            </button>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className={`rounded-xl p-4 ${darkMode ? 'bg-white/10' : 'bg-white border border-slate-200'}`}>
+          <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>DRAFT</p>
+          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>{filteredStats.draft}</p>
+        </div>
+        <div className={`rounded-xl p-4 ${darkMode ? 'bg-blue-500/10' : 'bg-blue-50 border border-blue-200'}`}>
+          <p className={`text-xs font-medium text-blue-500`}>SUBMITTED</p>
+          <p className={`text-2xl font-bold text-blue-500`}>{filteredStats.submitted}</p>
+        </div>
+        <div className={`rounded-xl p-4 ${darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50 border border-emerald-200'}`}>
+          <p className={`text-xs font-medium text-emerald-500`}>APPROVED</p>
+          <p className={`text-2xl font-bold text-emerald-500`}>{filteredStats.approved}</p>
+        </div>
+        <div className={`rounded-xl p-4 ${darkMode ? 'bg-red-500/10' : 'bg-red-50 border border-red-200'}`}>
+          <p className={`text-xs font-medium text-red-500`}>REJECTED</p>
+          <p className={`text-2xl font-bold text-red-500`}>{filteredStats.rejected}</p>
+        </div>
+      </div>
 
       {/* Variance Summary */}
-      {stats && stats.totalOriginal > 0 && (
+      {filteredStats.totalOriginal > 0 && (
         <div className={`rounded-xl p-4 mb-8 ${
           darkMode ? 'bg-white/5 border border-white/10' : 'bg-slate-50 border border-slate-200'
         }`}>
@@ -194,30 +263,35 @@ export default function ChangeOrders() {
             <div>
               <p className={`text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
                 Total Variance (Original vs Current)
+                {projectFilter !== 'all' && (
+                  <span className={`ml-2 text-xs ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                    — Filtered
+                  </span>
+                )}
               </p>
               <div className="flex items-center gap-4 mt-1">
                 <span className={`text-sm ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  Original: ${stats.totalOriginal.toLocaleString()}
+                  Original: ${filteredStats.totalOriginal.toLocaleString()}
                 </span>
                 <ChevronRight className={`w-4 h-4 ${darkMode ? 'text-white/20' : 'text-slate-300'}`} />
                 <span className={`text-sm ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  Current: ${stats.totalCurrent.toLocaleString()}
+                  Current: ${filteredStats.totalCurrent.toLocaleString()}
                 </span>
               </div>
             </div>
-            <div className={`text-right ${stats.totalVariance >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            <div className={`text-right ${filteredStats.totalVariance >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>
               <p className="text-2xl font-bold">
-                {stats.totalVariance >= 0 ? '+' : ''}${stats.totalVariance.toLocaleString()}
+                {filteredStats.totalVariance >= 0 ? '+' : ''}${filteredStats.totalVariance.toLocaleString()}
               </p>
               <p className="text-sm">
-                {stats.totalVariance >= 0 ? '+' : ''}{stats.variancePercent}% variance
+                {filteredStats.totalVariance >= 0 ? '+' : ''}{filteredStats.variancePercent}% variance
               </p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Filter Tabs */}
+      {/* Status Filter Tabs */}
       <div className="flex gap-2 mb-6">
         {['all', 'draft', 'submitted', 'approved', 'rejected'].map((status) => (
           <button
@@ -249,10 +323,16 @@ export default function ChangeOrders() {
             <AlertCircle className="w-5 h-5 mr-2" />
             {error}
           </div>
+        ) : projects.length === 0 ? (
+          <div className={`text-center py-12 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+            <Building2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>No projects yet. Create a project first to add change orders.</p>
+          </div>
         ) : filteredCOs.length === 0 ? (
           <div className={`text-center py-12 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No change orders {statusFilter !== 'all' ? `with status "${statusFilter}"` : 'yet'}</p>
+            <p>No change orders {statusFilter !== 'all' ? `with status "${statusFilter}"` : ''} 
+               {projectFilter !== 'all' ? ' for this project' : ''}</p>
             <button
               onClick={handleCreateNew}
               className="mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
@@ -293,7 +373,12 @@ export default function ChangeOrders() {
                       {co.title || 'Untitled'}
                     </td>
                     <td className={`p-4 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                      {co.project_name || '—'}
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 opacity-50" />
+                        <span className="truncate max-w-[200px]">
+                          {getProjectName(co.project_id)}
+                        </span>
+                      </div>
                     </td>
                     <td className="p-4">
                       <StatusBadge status={co.status} />
@@ -342,6 +427,8 @@ export default function ChangeOrders() {
         onClose={handleModalClose}
         onSave={handleSaved}
         darkMode={darkMode}
+        projects={projects}
+        defaultProjectId={projectFilter !== 'all' ? projectFilter : null}
       />
     </main>
   )

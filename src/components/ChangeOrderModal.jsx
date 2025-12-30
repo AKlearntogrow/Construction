@@ -11,7 +11,8 @@ import {
   FileText,
   AlertCircle,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Building2
 } from 'lucide-react'
 import { 
   createChangeOrder, 
@@ -26,11 +27,19 @@ import {
   calculateVariance
 } from '../services/changeOrderService'
 
-export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave, darkMode }) {
+export default function ChangeOrderModal({ 
+  changeOrder, 
+  isOpen, 
+  onClose, 
+  onSave, 
+  darkMode, 
+  projects = [],
+  defaultProjectId = null 
+}) {
   // Form state
   const [formData, setFormData] = useState({
     title: '',
-    project_name: '',
+    project_id: '',
     notes: '',
   })
   const [tickets, setTickets] = useState([])
@@ -55,14 +64,18 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
         loadChangeOrder()
       } else {
         // Reset for new CO
-        setFormData({ title: '', project_name: '', notes: '' })
+        setFormData({ 
+          title: '', 
+          project_id: defaultProjectId || '', 
+          notes: '' 
+        })
         setTickets([])
         setHasChanges(false)
         setError(null)
       }
       loadUnassignedTickets()
     }
-  }, [isOpen, changeOrder])
+  }, [isOpen, changeOrder, defaultProjectId])
 
   const loadChangeOrder = async () => {
     try {
@@ -70,7 +83,7 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
       const data = await getChangeOrderById(changeOrder.id)
       setFormData({
         title: data.title || '',
-        project_name: data.project_name || '',
+        project_id: data.project_id || '',
         notes: data.notes || '',
       })
       setTickets(data.tickets || [])
@@ -91,16 +104,31 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
     }
   }
 
+  // Filter unassigned tickets by selected project
+  const filteredUnassignedTickets = formData.project_id 
+    ? unassignedTickets.filter(t => t.project_id === formData.project_id)
+    : unassignedTickets
+
   if (!isOpen) return null
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     setHasChanges(true)
+    
+    // Clear selected tickets if project changes
+    if (field === 'project_id') {
+      setSelectedTicketIds([])
+    }
   }
 
   const handleSave = async () => {
     if (!formData.title.trim()) {
       setError('Title is required')
+      return
+    }
+
+    if (!formData.project_id) {
+      setError('Project is required')
       return
     }
 
@@ -216,6 +244,12 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
     )
   }
 
+  // Get project name helper
+  const getProjectName = (projectId) => {
+    const project = projects.find(p => p.id === projectId)
+    return project ? `${project.project_code} - ${project.name}` : 'Unknown Project'
+  }
+
   // Calculate totals
   const currentTotal = tickets.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0)
   const variance = changeOrder ? calculateVariance({ 
@@ -231,27 +265,20 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={handleBackdropClick}
     >
-      <div className={`w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl ${
-        darkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-200'
+      <div className={`w-full max-w-2xl max-h-[90vh] rounded-2xl flex flex-col ${
+        darkMode ? 'bg-slate-800' : 'bg-white'
       }`}>
         {/* Header */}
-        <div className={`sticky top-0 z-10 flex items-center justify-between p-4 border-b ${
-          darkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-200'
+        <div className={`flex items-center justify-between p-4 border-b ${
+          darkMode ? 'border-white/10' : 'border-slate-200'
         }`}>
-          <div>
-            <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-              {isNew ? 'New Change Order' : changeOrder.co_number}
-            </h2>
-            {!isNew && (
-              <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                Status: {changeOrder.status?.toUpperCase()}
-              </p>
-            )}
-          </div>
-          <button 
+          <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+            {isNew ? 'New Change Order' : `${changeOrder.co_number}`}
+          </h2>
+          <button
             onClick={handleClose}
             className={`p-2 rounded-lg transition-colors ${
               darkMode ? 'hover:bg-white/10 text-white/60' : 'hover:bg-slate-100 text-slate-400'
@@ -261,72 +288,92 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
           </button>
         </div>
 
+        {/* Content */}
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex-1 flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
           </div>
         ) : (
           <>
-            {/* Body */}
-            <div className="p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Project Selection (Required) */}
+              <div>
+                <label className={`block text-sm font-medium mb-1 ${
+                  darkMode ? 'text-white/60' : 'text-slate-600'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Project *
+                  </div>
+                </label>
+                <select
+                  value={formData.project_id}
+                  onChange={(e) => handleChange('project_id', e.target.value)}
+                  disabled={!isEditable || (!isNew && changeOrder?.project_id)}
+                  className={`${inputStyles} ${!isEditable ? 'opacity-60' : ''}`}
+                >
+                  <option value="">Select a project...</option>
+                  {projects.map(project => (
+                    <option key={project.id} value={project.id}>
+                      {project.project_code} - {project.name}
+                    </option>
+                  ))}
+                </select>
+                {!isNew && changeOrder?.project_id && (
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
+                    Project cannot be changed after creation
+                  </p>
+                )}
+              </div>
+
               {/* Title */}
               <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  TITLE *
+                <label className={`block text-sm font-medium mb-1 ${
+                  darkMode ? 'text-white/60' : 'text-slate-600'
+                }`}>
+                  Title *
                 </label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => handleChange('title', e.target.value)}
+                  placeholder="e.g., Week 1 Electrical Work"
                   disabled={!isEditable}
-                  className={inputStyles}
-                  placeholder="e.g., Week 1 Electrical Extras"
-                />
-              </div>
-
-              {/* Project */}
-              <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  PROJECT
-                </label>
-                <input
-                  type="text"
-                  value={formData.project_name}
-                  onChange={(e) => handleChange('project_name', e.target.value)}
-                  disabled={!isEditable}
-                  className={inputStyles}
-                  placeholder="Project name"
+                  className={`${inputStyles} ${!isEditable ? 'opacity-60' : ''}`}
                 />
               </div>
 
               {/* Notes */}
               <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  NOTES
+                <label className={`block text-sm font-medium mb-1 ${
+                  darkMode ? 'text-white/60' : 'text-slate-600'
+                }`}>
+                  Notes
                 </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => handleChange('notes', e.target.value)}
-                  disabled={!isEditable}
-                  rows={2}
-                  className={inputStyles}
                   placeholder="Additional notes..."
+                  rows={3}
+                  disabled={!isEditable}
+                  className={`${inputStyles} resize-none ${!isEditable ? 'opacity-60' : ''}`}
                 />
               </div>
 
-              {/* Linked Tickets Section (only for existing COs) */}
+              {/* Tickets Section (only for existing COs) */}
               {!isNew && (
-                <div className={`rounded-xl border p-4 ${
-                  darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
-                }`}>
+                <div className={`rounded-xl p-4 ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                    <h4 className={`font-medium flex items-center gap-2 ${
+                      darkMode ? 'text-white' : 'text-slate-800'
+                    }`}>
+                      <FileText className="w-4 h-4" />
                       Linked Tickets ({tickets.length})
-                    </h3>
+                    </h4>
                     {isEditable && (
                       <button
                         onClick={() => setShowAddTickets(!showAddTickets)}
-                        className="px-3 py-1 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors flex items-center gap-1"
+                        className="text-sm text-emerald-500 hover:text-emerald-400 flex items-center gap-1"
                       >
                         <Plus className="w-4 h-4" />
                         Add Tickets
@@ -340,50 +387,62 @@ export default function ChangeOrderModal({ changeOrder, isOpen, onClose, onSave,
                       darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'
                     }`}>
                       <p className={`text-sm mb-2 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                        Select unassigned tickets to add:
+                        Select tickets to add (only showing tickets from this project):
                       </p>
-                      {unassignedTickets.length === 0 ? (
+                      {filteredUnassignedTickets.length === 0 ? (
                         <p className={`text-sm italic ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                          No unassigned tickets available
+                          No unassigned tickets for this project
                         </p>
                       ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {filteredUnassignedTickets.map(ticket => (
+                            <label 
+                              key={ticket.id}
+                              className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${
+                                selectedTicketIds.includes(ticket.id)
+                                  ? darkMode ? 'bg-emerald-500/20' : 'bg-emerald-50'
+                                  : darkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTicketIds.includes(ticket.id)}
+                                onChange={() => toggleTicketSelection(ticket.id)}
+                                className="rounded border-slate-300"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm truncate ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                                  {ticket.description || 'No description'}
+                                </p>
+                                <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+                                  {ticket.location || 'No location'}
+                                </p>
+                              </div>
+                              <span className="text-emerald-500 font-medium text-sm">
+                                ${parseFloat(ticket.total_amount || 0).toLocaleString()}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {selectedTicketIds.length > 0 && (
                         <>
-                          <div className="max-h-40 overflow-y-auto space-y-2">
-                            {unassignedTickets.map(ticket => (
-                              <label 
-                                key={ticket.id}
-                                className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${
-                                  selectedTicketIds.includes(ticket.id)
-                                    ? 'bg-emerald-500/20'
-                                    : darkMode ? 'hover:bg-white/5' : 'hover:bg-slate-50'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedTicketIds.includes(ticket.id)}
-                                  onChange={() => toggleTicketSelection(ticket.id)}
-                                  className="rounded"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-sm truncate ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                                    {ticket.description || 'No description'}
-                                  </p>
-                                  <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                                    {ticket.location || 'No location'}
-                                  </p>
-                                </div>
-                                <span className="text-emerald-500 font-medium">
-                                  ${parseFloat(ticket.total_amount || 0).toLocaleString()}
-                                </span>
-                              </label>
-                            ))}
+                          <div className={`my-2 pt-2 border-t ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                            <p className={`text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                              Selected: {selectedTicketIds.length} ticket(s)
+                            </p>
                           </div>
                           <button
                             onClick={handleAddTickets}
-                            disabled={selectedTicketIds.length === 0 || saving}
-                            className="mt-3 w-full py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                            disabled={saving}
+                            className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                           >
-                            {saving ? 'Adding...' : `Add ${selectedTicketIds.length} Ticket(s)`}
+                            {saving ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Plus className="w-4 h-4" />
+                            )}
+                            Add Selected
                           </button>
                         </>
                       )}
