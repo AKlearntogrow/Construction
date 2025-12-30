@@ -7,7 +7,8 @@ import WarningAlerts from '../components/WarningAlerts'
 import ChangeOrdersTable from '../components/ChangeOrdersTable'
 import ProjectHealth from '../components/ProjectHealth'
 import BudgetChart from '../components/BudgetChart'
-import { FileText, Clock, DollarSign, CheckCircle, Loader2, Trash2, AlertCircle } from 'lucide-react'
+import TicketModal from '../components/TicketModal'
+import { FileText, Clock, DollarSign, CheckCircle, Loader2, Trash2, AlertCircle, Edit3 } from 'lucide-react'
 
 export default function Dashboard() {
   const { darkMode } = useTheme()
@@ -18,6 +19,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
+  
+  // Modal state
+  const [selectedTicket, setSelectedTicket] = useState(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Fetch real data on component mount
   useEffect(() => {
@@ -44,13 +49,13 @@ export default function Dashboard() {
     }
   }
 
-  const handleDeleteTicket = async (id) => {
+  const handleDeleteTicket = async (e, id) => {
+    e.stopPropagation() // Prevent row click from firing
     if (!confirm('Are you sure you want to delete this ticket?')) return
     
     try {
       setDeletingId(id)
       await deleteTicket(id)
-      // Refresh data after delete
       await fetchData()
     } catch (err) {
       console.error('Failed to delete ticket:', err)
@@ -58,6 +63,21 @@ export default function Dashboard() {
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const handleRowClick = (ticket) => {
+    setSelectedTicket(ticket)
+    setIsModalOpen(true)
+  }
+
+  const handleModalClose = () => {
+    setIsModalOpen(false)
+    setSelectedTicket(null)
+  }
+
+  const handleTicketSaved = (updatedTicket) => {
+    // Refresh data after edit
+    fetchData()
   }
 
   // Build KPI data from real stats
@@ -195,13 +215,19 @@ export default function Dashboard() {
                 {tickets.map((ticket) => (
                   <tr 
                     key={ticket.id} 
-                    className={`border-b transition-colors ${
+                    onClick={() => handleRowClick(ticket)}
+                    className={`border-b transition-colors cursor-pointer ${
                       darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50'
                     }`}
                   >
                     <td className={`py-4 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                      {ticket.description?.substring(0, 40) || 'No description'}
-                      {ticket.description?.length > 40 ? '...' : ''}
+                      <div className="flex items-center gap-2">
+                        <Edit3 className={`w-3.5 h-3.5 ${darkMode ? 'text-white/30' : 'text-slate-300'}`} />
+                        <span>
+                          {ticket.description?.substring(0, 40) || 'No description'}
+                          {ticket.description?.length > 40 ? '...' : ''}
+                        </span>
+                      </div>
                     </td>
                     <td className={`py-4 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
                       {ticket.location || '—'}
@@ -217,7 +243,7 @@ export default function Dashboard() {
                     </td>
                     <td className="py-4">
                       <button
-                        onClick={() => handleDeleteTicket(ticket.id)}
+                        onClick={(e) => handleDeleteTicket(e, ticket.id)}
                         disabled={deletingId === ticket.id}
                         className={`p-2 rounded-lg transition-colors ${
                           darkMode 
@@ -253,6 +279,15 @@ export default function Dashboard() {
 
       {/* Budget Chart */}
       <BudgetChart data={waterfallData} />
+
+      {/* Ticket Edit Modal */}
+      <TicketModal
+        ticket={selectedTicket}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        onSave={handleTicketSaved}
+        darkMode={darkMode}
+      />
     </main>
   )
 }
