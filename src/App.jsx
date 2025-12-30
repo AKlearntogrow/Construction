@@ -4,6 +4,7 @@ import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
 import Capture from './pages/Capture'
 import ChangeOrders from './pages/ChangeOrders'
+import Projects from './pages/Projects'
 
 function AppContent() {
   const { darkMode } = useTheme()
@@ -20,6 +21,7 @@ function AppContent() {
       {currentPage === 'dashboard' && <Dashboard />}
       {currentPage === 'capture' && <Capture />}
       {currentPage === 'change-orders' && <ChangeOrders />}
+      {currentPage === 'projects' && <Projects />}
     </div>
   )
 }
