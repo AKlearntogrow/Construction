@@ -1,18 +1,90 @@
-import { useState } from 'react'
-import { Mic, MicOff, FileText, Clock, MapPin, Loader2, Users, Package, Wrench, CheckCircle, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { 
+  Mic, 
+  MicOff, 
+  FileText, 
+  Clock, 
+  MapPin, 
+  Loader2, 
+  Users, 
+  Package, 
+  Wrench,
+  CheckCircle,
+  AlertCircle,
+  Plus,
+  Trash2,
+  DollarSign,
+  Building2,
+  FolderPlus
+} from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
-import { createTicket } from '../services/ticketService';
+import { createTicket } from '../services/ticketService'
+import { getActiveProjects } from '../services/projectService'
+import { getAllChangeOrders, createChangeOrder, addTicketsToChangeOrder } from '../services/changeOrderService'
+import { sanitizeCurrency, formatCurrency } from '../utils/validation'
 
 export default function Capture() {
   const { darkMode } = useTheme()
+  
+  // Recording state
   const [isRecording, setIsRecording] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [extractedData, setExtractedData] = useState(null)
   const [error, setError] = useState(null)
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  // Save state
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  
+  // Projects & Change Orders
+  const [projects, setProjects] = useState([])
+  const [changeOrders, setChangeOrders] = useState([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [coOption, setCoOption] = useState('none') // 'none' | 'existing' | 'new'
+  const [selectedCoId, setSelectedCoId] = useState('')
+  const [newCoTitle, setNewCoTitle] = useState('')
+  
+  // Editable labor & materials
+  const [laborEntries, setLaborEntries] = useState([])
+  const [materialEntries, setMaterialEntries] = useState([])
+
+  // Load projects and change orders on mount
+  useEffect(() => {
+    loadProjects()
+  }, [])
+
+  // Load change orders when project is selected
+  useEffect(() => {
+    if (selectedProjectId) {
+      loadChangeOrders()
+    } else {
+      setChangeOrders([])
+    }
+  }, [selectedProjectId])
+
+  const loadProjects = async () => {
+    try {
+      const data = await getActiveProjects()
+      setProjects(data)
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+    }
+  }
+
+  const loadChangeOrders = async () => {
+    try {
+      const data = await getAllChangeOrders()
+      // Filter to only show draft COs for the selected project
+      const filtered = data.filter(co => 
+        co.project_id === selectedProjectId && co.status === 'draft'
+      )
+      setChangeOrders(filtered)
+    } catch (err) {
+      console.error('Failed to load change orders:', err)
+    }
+  }
 
   const startRecording = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -48,6 +120,8 @@ export default function Capture() {
     setIsRecording(true)
     setExtractedData(null)
     setError(null)
+    setLaborEntries([])
+    setMaterialEntries([])
     window.currentRecognition = recognition
   }
 
@@ -64,6 +138,11 @@ export default function Capture() {
     setError(null)
     setSaveError(null)
     setSaveSuccess(false)
+    setLaborEntries([])
+    setMaterialEntries([])
+    setCoOption('none')
+    setSelectedCoId('')
+    setNewCoTitle('')
   }
 
   const processWithAI = async () => {
@@ -87,6 +166,32 @@ export default function Capture() {
 
       const data = await response.json()
       setExtractedData(data)
+      
+      // Initialize editable labor entries from AI extraction
+      if (data.labor) {
+        const laborData = Array.isArray(data.labor) ? data.labor : [data.labor]
+        setLaborEntries(laborData.map(l => ({
+          trade: l.trade || l.role || 'Worker',
+          workers: l.workers || 1,
+          hours: l.hours_total || l.hours || 0,
+          rate: l.rate || 0, // User needs to fill this in
+        })))
+      } else {
+        setLaborEntries([])
+      }
+      
+      // Initialize editable material entries from AI extraction
+      if (data.materials && Array.isArray(data.materials)) {
+        setMaterialEntries(data.materials.map(m => ({
+          item: m.item || '',
+          quantity: m.quantity || 0,
+          unit: m.unit || 'each',
+          unit_cost: m.unit_cost || 0, // User needs to fill this in
+        })))
+      } else {
+        setMaterialEntries([])
+      }
+      
     } catch (err) {
       console.error('Error:', err)
       setError('Failed to process. Make sure you have set up the API key.')
@@ -95,278 +200,626 @@ export default function Capture() {
     }
   }
 
+  // Labor entry handlers
+  const addLaborEntry = () => {
+    setLaborEntries([...laborEntries, { trade: '', workers: 1, hours: 0, rate: 0 }])
+  }
+
+  const updateLaborEntry = (index, field, value) => {
+    const updated = [...laborEntries]
+    updated[index][field] = value
+    setLaborEntries(updated)
+  }
+
+  const removeLaborEntry = (index) => {
+    setLaborEntries(laborEntries.filter((_, i) => i !== index))
+  }
+
+  // Material entry handlers
+  const addMaterialEntry = () => {
+    setMaterialEntries([...materialEntries, { item: '', quantity: 0, unit: 'each', unit_cost: 0 }])
+  }
+
+  const updateMaterialEntry = (index, field, value) => {
+    const updated = [...materialEntries]
+    updated[index][field] = value
+    setMaterialEntries(updated)
+  }
+
+  const removeMaterialEntry = (index) => {
+    setMaterialEntries(materialEntries.filter((_, i) => i !== index))
+  }
+
+  // Calculate totals
+  const laborTotal = laborEntries.reduce((sum, entry) => {
+    const workers = parseFloat(entry.workers) || 0
+    const hours = parseFloat(entry.hours) || 0
+    const rate = parseFloat(entry.rate) || 0
+    return sum + (workers * hours * rate)
+  }, 0)
+
+  const materialsTotal = materialEntries.reduce((sum, entry) => {
+    const quantity = parseFloat(entry.quantity) || 0
+    const unitCost = parseFloat(entry.unit_cost) || 0
+    return sum + (quantity * unitCost)
+  }, 0)
+
+  const grandTotal = laborTotal + materialsTotal
+
   const handleSaveTicket = async () => {
-    console.log('Save button clicked!');
-    if (!extractedData) {
-      setSaveError('No ticket data to save');
-      return;
+    // Validation
+    if (!selectedProjectId) {
+      setSaveError('Please select a project')
+      return
     }
 
-    setIsSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
+    if (laborEntries.length === 0 && materialEntries.length === 0) {
+      setSaveError('Please add at least one labor entry or material')
+      return
+    }
+
+    if (grandTotal === 0) {
+      setSaveError('Total amount cannot be zero. Please add rates/costs.')
+      return
+    }
+
+    if (coOption === 'new' && !newCoTitle.trim()) {
+      setSaveError('Please enter a title for the new Change Order')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveError(null)
+    setSaveSuccess(false)
 
     try {
-      // Transform extractedData to match database schema
-      const ticketData = {
-        description: extractedData.description || extractedData.summary || '',
-        location: extractedData.location || '',
-        cost_code: extractedData.cost_code_suggestion || extractedData.costCode || '',
-        project_name: extractedData.project || 'Default Project',
-        labor: extractedData.labor ? [extractedData.labor] : [],
-        materials: extractedData.materials || [],
-        original_transcript: transcript,
-        compliance_notes: extractedData.compliance || extractedData.complianceNotes || '',
-        status: 'pending',
-      };
+      // Prepare labor data with calculated totals
+      const validatedLabor = laborEntries.map(entry => ({
+        trade: entry.trade || 'Worker',
+        workers: parseFloat(entry.workers) || 0,
+        hours: parseFloat(entry.hours) || 0,
+        rate: sanitizeCurrency(entry.rate),
+        total: (parseFloat(entry.workers) || 0) * (parseFloat(entry.hours) || 0) * sanitizeCurrency(entry.rate)
+      }))
 
-      const savedTicket = await createTicket(ticketData);
-      
-      setSaveSuccess(true);
-      console.log('Ticket saved:', savedTicket);
+      // Prepare materials data with calculated totals
+      const validatedMaterials = materialEntries.map(entry => ({
+        item: entry.item || 'Item',
+        quantity: parseFloat(entry.quantity) || 0,
+        unit: entry.unit || 'each',
+        unit_cost: sanitizeCurrency(entry.unit_cost),
+        total: (parseFloat(entry.quantity) || 0) * sanitizeCurrency(entry.unit_cost)
+      }))
+
+      // Build ticket data
+      const ticketData = {
+        project_id: selectedProjectId,
+        description: extractedData?.description || '',
+        location: extractedData?.location || '',
+        cost_code: extractedData?.cost_code_suggestion || '',
+        labor: validatedLabor,
+        materials: validatedMaterials,
+        labor_total: laborTotal,
+        materials_total: materialsTotal,
+        total_amount: grandTotal,
+        original_transcript: transcript,
+        compliance_notes: extractedData?.compliance || '',
+        status: 'pending',
+      }
+
+      // Create the ticket
+      const savedTicket = await createTicket(ticketData)
+      console.log('Ticket saved:', savedTicket)
+
+      // Handle Change Order assignment
+      if (coOption === 'existing' && selectedCoId) {
+        await addTicketsToChangeOrder(selectedCoId, [savedTicket.id])
+      } else if (coOption === 'new' && newCoTitle.trim()) {
+        const newCO = await createChangeOrder({
+          title: newCoTitle.trim(),
+          project_id: selectedProjectId,
+        })
+        await addTicketsToChangeOrder(newCO.id, [savedTicket.id])
+      }
+
+      setSaveSuccess(true)
       
       // Reset form after 2 seconds
       setTimeout(() => {
-        setTranscript('');
-        setExtractedData(null);
-        setSaveSuccess(false);
-      }, 2000);
+        clearAll()
+        setTranscript('')
+      }, 2000)
 
-    } catch (error) {
-      console.error('Failed to save ticket:', error);
-      setSaveError(error.message);
+    } catch (err) {
+      console.error('Failed to save ticket:', err)
+      setSaveError(err.message)
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
+
+  const inputStyles = `w-full px-3 py-2 rounded-lg border transition-colors ${
+    darkMode 
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+      : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
+  } outline-none`
+
+  const smallInputStyles = `px-2 py-1.5 rounded-lg border text-sm transition-colors ${
+    darkMode 
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+      : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
+  } outline-none`
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
+    <main className="max-w-5xl mx-auto px-6 py-8">
       <div className="mb-8">
-        <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>Capture T&M Ticket</h1>
-        <p className={`mt-1 ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>Speak to create a new time & materials ticket</p>
+        <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+          Capture T&M Ticket
+        </h1>
+        <p className={`mt-1 ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
+          Record work, add costs, and save to a project
+        </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className={`backdrop-blur-xl rounded-2xl border p-6 ${
-          darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
-        }`}>
-          
-          <div className="flex flex-col items-center mb-6">
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-                isRecording
-                  ? 'bg-red-500 hover:bg-red-600 animate-pulse'
-                  : 'bg-gradient-to-br from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600'
-              }`}
-            >
-              {isRecording ? (
-                <MicOff className="w-8 h-8 text-white" />
-              ) : (
-                <Mic className="w-8 h-8 text-white" />
-              )}
-            </button>
-            <p className={`mt-3 text-sm ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
-              {isRecording ? 'Tap to stop' : 'Tap to record'}
-            </p>
-            {isRecording && (
-              <div className="flex items-center gap-2 mt-2">
-                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-red-500 text-sm font-medium">Recording...</span>
-              </div>
-            )}
+      {/* Project Selection - Required first step */}
+      <div className={`rounded-2xl border p-6 mb-6 ${
+        darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
+      }`}>
+        <div className="flex items-center gap-2 mb-4">
+          <Building2 className="w-5 h-5 text-emerald-500" />
+          <h2 className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+            Select Project *
+          </h2>
+        </div>
+        
+        {projects.length === 0 ? (
+          <div className={`text-center py-4 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+            <p>No active projects. Create a project first.</p>
           </div>
+        ) : (
+          <select
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            className={inputStyles}
+          >
+            <option value="">Choose a project...</option>
+            {projects.map(project => (
+              <option key={project.id} value={project.id}>
+                {project.project_code} - {project.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
 
-          <div className={`rounded-xl p-4 min-h-[120px] ${
-            darkMode ? 'bg-white/5 border border-white/10' : 'bg-slate-50 border border-slate-200'
+      {/* Main capture area - only show if project selected */}
+      {selectedProjectId && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* Left: Voice Recording */}
+          <div className={`backdrop-blur-xl rounded-2xl border p-6 ${
+            darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
           }`}>
-            <div className="flex items-center gap-2 mb-2">
-              <FileText className={`w-4 h-4 ${darkMode ? 'text-white/40' : 'text-slate-400'}`} />
-              <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>TRANSCRIPT</span>
+            
+            <div className="flex flex-col items-center mb-6">
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
+                  isRecording
+                    ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                    : 'bg-gradient-to-br from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600'
+                }`}
+              >
+                {isRecording ? (
+                  <MicOff className="w-8 h-8 text-white" />
+                ) : (
+                  <Mic className="w-8 h-8 text-white" />
+                )}
+              </button>
+              <p className={`mt-3 text-sm ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
+                {isRecording ? 'Tap to stop' : 'Tap to record'}
+              </p>
+              {isRecording && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-red-500 text-sm font-medium">Recording...</span>
+                </div>
+              )}
             </div>
-            {transcript ? (
-              <p className={`text-sm leading-relaxed ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                {transcript}
-              </p>
-            ) : (
-              <p className={`text-sm italic ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-                Your speech will appear here...
-              </p>
+
+            <div className={`rounded-xl p-4 min-h-[120px] ${
+              darkMode ? 'bg-white/5 border border-white/10' : 'bg-slate-50 border border-slate-200'
+            }`}>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className={`w-4 h-4 ${darkMode ? 'text-white/40' : 'text-slate-400'}`} />
+                <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>TRANSCRIPT</span>
+              </div>
+              {transcript ? (
+                <p className={`text-sm leading-relaxed ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                  {transcript}
+                </p>
+              ) : (
+                <p className={`text-sm italic ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
+                  Your speech will appear here...
+                </p>
+              )}
+            </div>
+
+            {transcript && (
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={clearAll}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    darkMode 
+                      ? 'bg-white/10 text-white hover:bg-white/20' 
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={processWithAI}
+                  disabled={isProcessing}
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Extract with AI →'
+                  )}
+                </button>
+              </div>
+            )}
+
+            {error && (
+              <div className="mt-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
+                {error}
+              </div>
             )}
           </div>
 
-          {transcript && (
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={clearAll}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  darkMode 
-                    ? 'bg-white/10 text-white hover:bg-white/20' 
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                Clear
-              </button>
-              <button
-                onClick={processWithAI}
-                disabled={isProcessing}
-                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Process with AI →'
-                )}
-              </button>
-            </div>
-          )}
+          {/* Right: Extracted Data & Costs */}
+          <div className={`backdrop-blur-xl rounded-2xl border p-6 ${
+            darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
+          }`}>
+            <h3 className={`font-semibold mb-4 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+              T&M Ticket Details
+            </h3>
 
-          {error && (
-            <div className="mt-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div className={`backdrop-blur-xl rounded-2xl border p-6 ${
-          darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
-        }`}>
-          <h3 className={`font-semibold mb-4 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-            Extracted T&M Ticket
-          </h3>
-
-          {extractedData ? (
-            <div className="space-y-4">
-              <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>DESCRIPTION</p>
-                <p className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                  {extractedData.description || 'N/A'}
-                </p>
-              </div>
-
-              {extractedData.labor && (
+            {extractedData ? (
+              <div className="space-y-4">
+                {/* Description & Location */}
                 <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Users className="w-4 h-4 text-blue-500" />
-                    <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>LABOR</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                        {extractedData.labor.workers || '—'}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Workers</p>
+                  <p className={`text-xs font-medium mb-1 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>DESCRIPTION</p>
+                  <p className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                    {extractedData.description || 'N/A'}
+                  </p>
+                  {extractedData.location && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <MapPin className="w-3 h-3 text-violet-500" />
+                      <span className={`text-xs ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                        {extractedData.location}
+                      </span>
                     </div>
-                    <div>
-                      <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                        {extractedData.labor.hours_total || '—'}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Hours</p>
-                    </div>
-                    <div>
-                      <p className={`text-sm font-medium ${
-                        extractedData.labor.rate_type === 'overtime' ? 'text-amber-500' : 'text-emerald-500'
-                      }`}>
-                        {extractedData.labor.rate_type || '—'}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Rate Type</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              )}
 
-              {extractedData.materials && extractedData.materials.length > 0 && (
+                {/* Labor Entries */}
                 <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Package className="w-4 h-4 text-amber-500" />
-                    <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>MATERIALS</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-blue-500" />
+                      <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>LABOR</span>
+                    </div>
+                    <button
+                      onClick={addLaborEntry}
+                      className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </button>
                   </div>
-                  <div className="space-y-2">
-                    {extractedData.materials.map((material, idx) => (
-                      <div key={idx} className="flex justify-between items-center">
-                        <span className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                          {material.item}
-                        </span>
-                        <span className={`text-sm font-medium ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                          {material.quantity} {material.unit}
-                        </span>
+                  
+                  {laborEntries.length === 0 ? (
+                    <p className={`text-sm italic ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
+                      No labor entries. Click Add to create one.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {laborEntries.map((entry, idx) => (
+                        <div key={idx} className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <input
+                              type="text"
+                              value={entry.trade}
+                              onChange={(e) => updateLaborEntry(idx, 'trade', e.target.value)}
+                              placeholder="Trade/Role"
+                              className={`${smallInputStyles} flex-1 mr-2`}
+                            />
+                            <button
+                              onClick={() => removeLaborEntry(idx)}
+                              className="text-red-400 hover:text-red-300 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Workers</label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={entry.workers}
+                                onChange={(e) => updateLaborEntry(idx, 'workers', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Hours</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={entry.hours}
+                                onChange={(e) => updateLaborEntry(idx, 'hours', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>$/Hour</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={entry.rate}
+                                onChange={(e) => updateLaborEntry(idx, 'rate', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Total</label>
+                              <div className={`text-sm font-medium py-1.5 text-emerald-500`}>
+                                {formatCurrency((entry.workers || 0) * (entry.hours || 0) * (entry.rate || 0))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="text-right">
+                        <span className={`text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>Labor Total: </span>
+                        <span className="text-lg font-bold text-emerald-500">{formatCurrency(laborTotal)}</span>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="grid grid-cols-2 gap-3">
+                {/* Material Entries */}
                 <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <MapPin className="w-4 h-4 text-violet-500" />
-                    <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>LOCATION</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-amber-500" />
+                      <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>MATERIALS</span>
+                    </div>
+                    <button
+                      onClick={addMaterialEntry}
+                      className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </button>
                   </div>
-                  <p className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                    {extractedData.location || 'N/A'}
-                  </p>
+                  
+                  {materialEntries.length === 0 ? (
+                    <p className={`text-sm italic ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
+                      No materials. Click Add to create one.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {materialEntries.map((entry, idx) => (
+                        <div key={idx} className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <input
+                              type="text"
+                              value={entry.item}
+                              onChange={(e) => updateMaterialEntry(idx, 'item', e.target.value)}
+                              placeholder="Item name"
+                              className={`${smallInputStyles} flex-1 mr-2`}
+                            />
+                            <button
+                              onClick={() => removeMaterialEntry(idx)}
+                              className="text-red-400 hover:text-red-300 p-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-4 gap-2">
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Qty</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={entry.quantity}
+                                onChange={(e) => updateMaterialEntry(idx, 'quantity', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Unit</label>
+                              <input
+                                type="text"
+                                value={entry.unit}
+                                onChange={(e) => updateMaterialEntry(idx, 'unit', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                                placeholder="each"
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>$/Unit</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={entry.unit_cost}
+                                onChange={(e) => updateMaterialEntry(idx, 'unit_cost', e.target.value)}
+                                className={smallInputStyles + ' w-full'}
+                                placeholder="0.00"
+                              />
+                            </div>
+                            <div>
+                              <label className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>Total</label>
+                              <div className={`text-sm font-medium py-1.5 text-emerald-500`}>
+                                {formatCurrency((entry.quantity || 0) * (entry.unit_cost || 0))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="text-right">
+                        <span className={`text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>Materials Total: </span>
+                        <span className="text-lg font-bold text-emerald-500">{formatCurrency(materialsTotal)}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Wrench className="w-4 h-4 text-emerald-500" />
-                    <p className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>COST CODE</p>
-                  </div>
-                  <p className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                    {extractedData.cost_code_suggestion || 'N/A'}
-                  </p>
-                </div>
-              </div>
 
-              {/* Save Button with loading/success states */}
-              <button 
-                onClick={handleSaveTicket}
-                disabled={isSaving || saveSuccess}
-                className={`w-full mt-4 px-4 py-3 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  saveSuccess
-                    ? 'bg-green-500 text-white'
-                    : isSaving
-                    ? 'bg-gray-400 cursor-not-allowed text-white'
-                    : 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600'
-                }`}
-              >
-                {saveSuccess ? (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    Ticket Saved!
-                  </>
-                ) : isSaving ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save T&M Ticket'
+                {/* Grand Total */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-800'}`}>Grand Total</span>
+                    <span className="text-2xl font-bold text-emerald-500">{formatCurrency(grandTotal)}</span>
+                  </div>
+                </div>
+
+                {/* Change Order Assignment */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <FolderPlus className="w-4 h-4 text-violet-500" />
+                    <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+                      CHANGE ORDER (Optional)
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="coOption"
+                        value="none"
+                        checked={coOption === 'none'}
+                        onChange={(e) => setCoOption(e.target.value)}
+                        className="text-emerald-500"
+                      />
+                      <span className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                        Save without Change Order
+                      </span>
+                    </label>
+                    
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="coOption"
+                        value="existing"
+                        checked={coOption === 'existing'}
+                        onChange={(e) => setCoOption(e.target.value)}
+                        className="text-emerald-500"
+                      />
+                      <span className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                        Add to existing Change Order
+                      </span>
+                    </label>
+                    
+                    {coOption === 'existing' && (
+                      <select
+                        value={selectedCoId}
+                        onChange={(e) => setSelectedCoId(e.target.value)}
+                        className={`${inputStyles} ml-6`}
+                      >
+                        <option value="">Select a Change Order...</option>
+                        {changeOrders.map(co => (
+                          <option key={co.id} value={co.id}>
+                            {co.co_number} - {co.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="coOption"
+                        value="new"
+                        checked={coOption === 'new'}
+                        onChange={(e) => setCoOption(e.target.value)}
+                        className="text-emerald-500"
+                      />
+                      <span className={`text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                        Create new Change Order
+                      </span>
+                    </label>
+                    
+                    {coOption === 'new' && (
+                      <input
+                        type="text"
+                        value={newCoTitle}
+                        onChange={(e) => setNewCoTitle(e.target.value)}
+                        placeholder="Change Order title..."
+                        className={`${inputStyles} ml-6`}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <button
+                  onClick={handleSaveTicket}
+                  disabled={isSaving || saveSuccess}
+                  className={`w-full py-3 px-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                    saveSuccess
+                      ? 'bg-green-500 text-white'
+                      : isSaving
+                      ? 'bg-gray-400 cursor-not-allowed text-white'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25'
+                  }`}
+                >
+                  {saveSuccess ? (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      Ticket Saved!
+                    </>
+                  ) : isSaving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <DollarSign className="w-5 h-5" />
+                      Save T&M Ticket ({formatCurrency(grandTotal)})
+                    </>
+                  )}
+                </button>
+
+                {saveError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    <p className="text-red-400 text-sm flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      {saveError}
+                    </p>
+                  </div>
                 )}
-              </button>
-
-              {/* Error message */}
-              {saveError && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  <p className="text-red-400 text-sm flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    {saveError}
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className={`h-64 flex flex-col items-center justify-center ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-              <Wrench className="w-12 h-12 mb-3 opacity-50" />
-              <p className="text-sm">Record and process to see extracted data</p>
-            </div>
-          )}
+              </div>
+            ) : (
+              <div className={`h-64 flex flex-col items-center justify-center ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
+                <Wrench className="w-12 h-12 mb-3 opacity-50" />
+                <p className="text-sm">Record and process to see extracted data</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* Tips */}
       <div className={`mt-6 rounded-2xl border p-6 ${
         darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'
       }`}>
@@ -374,15 +827,15 @@ export default function Capture() {
         <div className={`grid md:grid-cols-3 gap-4 text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
           <div className="flex items-start gap-2">
             <Clock className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-            <span>Include dates: "Yesterday we worked 6 hours..."</span>
+            <span>Include time: "Two workers for 4 hours each..."</span>
           </div>
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-            <span>Mention locations: "...in section B..."</span>
+            <span>Mention location: "...in Building A, Room 201..."</span>
           </div>
           <div className="flex items-start gap-2">
             <Package className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-            <span>Be specific: "...200 feet of 2-inch EMT..."</span>
+            <span>List materials: "...used 20 outlets and 200 feet of wire..."</span>
           </div>
         </div>
       </div>
