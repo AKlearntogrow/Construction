@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -12,7 +11,6 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   
-  // Debug: Check if API key exists
   if (!apiKey) {
     console.error('ANTHROPIC_API_KEY is not set');
     return res.status(500).json({ error: 'API key not configured' });
@@ -37,13 +35,13 @@ export default async function handler(req, res) {
 TRANSCRIPT:
 "${transcript}"
 
-Extract and return ONLY a JSON object with this structure (no other text):
+Return ONLY a raw JSON object with this structure. Do NOT wrap it in markdown code blocks. No backticks. Just the raw JSON:
 {
-  "date": "YYYY-MM-DD or 'today' or 'yesterday'",
+  "date": "YYYY-MM-DD or today or yesterday",
   "labor": {
     "workers": number,
     "hours_total": number,
-    "rate_type": "regular" or "overtime"
+    "rate_type": "regular or overtime"
   },
   "materials": [
     {
@@ -57,8 +55,7 @@ Extract and return ONLY a JSON object with this structure (no other text):
   "cost_code_suggestion": "CSI code if identifiable, otherwise null"
 }
 
-If any field cannot be determined from the transcript, use null.
-Return ONLY the JSON, no explanation.`
+If any field cannot be determined from the transcript, use null. Return ONLY the raw JSON object, nothing else.`
           }
         ]
       })
@@ -71,7 +68,11 @@ Return ONLY the JSON, no explanation.`
     }
 
     const data = await response.json();
-    const responseText = data.content[0].text;
+    let responseText = data.content[0].text;
+    
+    // Clean up markdown code blocks if present
+    responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
     const extracted = JSON.parse(responseText);
 
     return res.status(200).json(extracted);
