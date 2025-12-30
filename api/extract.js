@@ -1,4 +1,40 @@
+import Anthropic from '@anthropic-ai/sdk';
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// Standard construction trades for reference
+const STANDARD_TRADES = [
+  'Electrician',
+  'Plumber', 
+  'HVAC Technician',
+  'Carpenter',
+  'Painter',
+  'Mason',
+  'Roofer',
+  'Welder',
+  'Pipefitter',
+  'Sheet Metal Worker',
+  'Ironworker',
+  'Laborer',
+  'Foreman',
+  'Superintendent',
+  'Equipment Operator',
+  'Concrete Finisher',
+  'Drywall Installer',
+  'Insulation Worker',
+  'Glazier',
+  'Flooring Installer',
+  'Tile Setter',
+  'Fire Sprinkler Fitter',
+  'Millwright',
+  'Boilermaker',
+  'Elevator Mechanic'
+];
+
 export default async function handler(req, res) {
+  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -9,75 +45,86 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'No transcript provided' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  
-  if (!apiKey) {
-    console.error('ANTHROPIC_API_KEY is not set');
-    return res.status(500).json({ error: 'API key not configured' });
-  }
-
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: `You are a construction T&M (Time & Materials) ticket parser. Extract structured data from this field worker's voice transcript.
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      messages: [
+        {
+          role: 'user',
+          content: `You are a construction T&M (Time & Materials) ticket parser. Extract structured data from this field worker's voice transcript.
+
+IMPORTANT: Extract ALL mentioned values including hourly rates, quantities, and costs. If a rate is mentioned (like "$60 per hour" or "$85/hr"), capture it.
+
+STANDARD CONSTRUCTION TRADES (match to closest one):
+${STANDARD_TRADES.join(', ')}
 
 TRANSCRIPT:
 "${transcript}"
 
-Return ONLY a raw JSON object with this structure. Do NOT wrap it in markdown code blocks. No backticks. Just the raw JSON:
+Extract and return ONLY a JSON object with this structure (no other text, no markdown):
 {
-  "date": "YYYY-MM-DD or today or yesterday",
-  "labor": {
-    "workers": number,
-    "hours_total": number,
-    "rate_type": "regular or overtime"
-  },
-  "materials": [
+  "description": "Brief summary of work performed",
+  "location": "Where the work was done (building, room, area)",
+  "date": "YYYY-MM-DD or 'today' or 'yesterday' if mentioned",
+  "labor": [
     {
-      "item": "description",
-      "quantity": number,
-      "unit": "ft/ea/lbs/etc"
+      "trade": "Standard trade name from list above (e.g., 'Plumber', 'Electrician')",
+      "workers": 2,
+      "hours": 8,
+      "rate": 60.00
     }
   ],
-  "location": "where the work was done",
-  "description": "brief summary of work performed",
-  "cost_code_suggestion": "CSI code if identifiable, otherwise null"
+  "materials": [
+    {
+      "item": "Material description",
+      "quantity": 10,
+      "unit": "ft/ea/lbs/box/roll/etc",
+      "unit_cost": 12.50
+    }
+  ],
+  "cost_code_suggestion": "CSI code if identifiable (e.g., '26 05 00' for electrical), otherwise null",
+  "compliance": "Any safety or compliance notes mentioned"
 }
 
-If any field cannot be determined from the transcript, use null. Return ONLY the raw JSON object, nothing else.`
-          }
-        ]
-      })
+PARSING RULES:
+1. For labor: Calculate total hours per worker. If "4 hours each" with 2 workers, that's workers:2, hours:4 (per worker)
+2. For rates: Extract hourly rate if mentioned ("$60 an hour" = rate:60). If not mentioned, use rate:0
+3. For materials: Extract unit cost if mentioned ("$12 each" = unit_cost:12). If not mentioned, use unit_cost:0
+4. Match trade names to the standard list above (e.g., "plumbers" → "Plumber")
+5. If multiple trades mentioned, create separate entries in the labor array
+6. If duration is "7 days 8 hours a day", calculate total hours: 7 * 8 = 56 hours
+
+Return ONLY valid JSON, no explanation.`
+        }
+      ],
     });
 
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Anthropic API error:', response.status, errorData);
-      return res.status(500).json({ error: `API error: ${response.status}` });
+    // Parse the response
+    let extractedData;
+    try {
+      // Get the text content from Claude's response
+      const responseText = message.content[0].text;
+      
+      // Clean up the response - remove any markdown code blocks if present
+      const cleanedText = responseText
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      
+      extractedData = JSON.parse(cleanedText);
+    } catch (parseError) {
+      console.error('Failed to parse Claude response:', message.content[0].text);
+      return res.status(500).json({ 
+        error: 'Failed to parse AI response',
+        raw: message.content[0].text 
+      });
     }
 
-    const data = await response.json();
-    let responseText = data.content[0].text;
-    
-    // Clean up markdown code blocks if present
-    responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    const extracted = JSON.parse(responseText);
+    return res.status(200).json(extractedData);
 
-    return res.status(200).json(extracted);
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Error calling Claude API:', error);
     return res.status(500).json({ error: 'Failed to process transcript' });
   }
 }

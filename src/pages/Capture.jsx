@@ -22,6 +22,7 @@ import { createTicket } from '../services/ticketService'
 import { getActiveProjects } from '../services/projectService'
 import { getAllChangeOrders, createChangeOrder, addTicketsToChangeOrder } from '../services/changeOrderService'
 import { sanitizeCurrency, formatCurrency } from '../utils/validation'
+import { CONSTRUCTION_TRADES, matchTrade, getTradeLabel } from '../data/trades'
 
 export default function Capture() {
   const { darkMode } = useTheme()
@@ -168,14 +169,21 @@ export default function Capture() {
       setExtractedData(data)
       
       // Initialize editable labor entries from AI extraction
-      if (data.labor) {
-        const laborData = Array.isArray(data.labor) ? data.labor : [data.labor]
-        setLaborEntries(laborData.map(l => ({
-          trade: l.trade || l.role || 'Worker',
+      if (data.labor && Array.isArray(data.labor)) {
+        setLaborEntries(data.labor.map(l => ({
+          trade: matchTrade(l.trade || l.role),
           workers: l.workers || 1,
-          hours: l.hours_total || l.hours || 0,
-          rate: l.rate || 0, // User needs to fill this in
+          hours: l.hours || l.hours_total || 0,
+          rate: l.rate || 0,
         })))
+      } else if (data.labor && typeof data.labor === 'object') {
+        // Single labor object
+        setLaborEntries([{
+          trade: matchTrade(data.labor.trade || data.labor.role),
+          workers: data.labor.workers || 1,
+          hours: data.labor.hours || data.labor.hours_total || 0,
+          rate: data.labor.rate || 0,
+        }])
       } else {
         setLaborEntries([])
       }
@@ -186,7 +194,7 @@ export default function Capture() {
           item: m.item || '',
           quantity: m.quantity || 0,
           unit: m.unit || 'each',
-          unit_cost: m.unit_cost || 0, // User needs to fill this in
+          unit_cost: m.unit_cost || 0,
         })))
       } else {
         setMaterialEntries([])
@@ -202,7 +210,7 @@ export default function Capture() {
 
   // Labor entry handlers
   const addLaborEntry = () => {
-    setLaborEntries([...laborEntries, { trade: '', workers: 1, hours: 0, rate: 0 }])
+    setLaborEntries([...laborEntries, { trade: 'laborer', workers: 1, hours: 0, rate: 0 }])
   }
 
   const updateLaborEntry = (index, field, value) => {
@@ -275,7 +283,7 @@ export default function Capture() {
     try {
       // Prepare labor data with calculated totals
       const validatedLabor = laborEntries.map(entry => ({
-        trade: entry.trade || 'Worker',
+        trade: getTradeLabel(entry.trade),
         workers: parseFloat(entry.workers) || 0,
         hours: parseFloat(entry.hours) || 0,
         rate: sanitizeCurrency(entry.rate),
@@ -345,6 +353,12 @@ export default function Capture() {
   } outline-none`
 
   const smallInputStyles = `px-2 py-1.5 rounded-lg border text-sm transition-colors ${
+    darkMode 
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+      : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
+  } outline-none`
+
+  const selectStyles = `px-2 py-1.5 rounded-lg border text-sm transition-colors ${
     darkMode 
       ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
       : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
@@ -530,13 +544,18 @@ export default function Capture() {
                       {laborEntries.map((entry, idx) => (
                         <div key={idx} className={`p-3 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
                           <div className="flex items-center justify-between mb-2">
-                            <input
-                              type="text"
+                            {/* Trade Dropdown */}
+                            <select
                               value={entry.trade}
                               onChange={(e) => updateLaborEntry(idx, 'trade', e.target.value)}
-                              placeholder="Trade/Role"
-                              className={`${smallInputStyles} flex-1 mr-2`}
-                            />
+                              className={`${selectStyles} flex-1 mr-2`}
+                            >
+                              {CONSTRUCTION_TRADES.map(trade => (
+                                <option key={trade.value} value={trade.value}>
+                                  {trade.label}
+                                </option>
+                              ))}
+                            </select>
                             <button
                               onClick={() => removeLaborEntry(idx)}
                               className="text-red-400 hover:text-red-300 p-1"
@@ -827,7 +846,7 @@ export default function Capture() {
         <div className={`grid md:grid-cols-3 gap-4 text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
           <div className="flex items-start gap-2">
             <Clock className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-            <span>Include time: "Two workers for 4 hours each..."</span>
+            <span>Include time & rate: "Two plumbers at $60 per hour for 8 hours..."</span>
           </div>
           <div className="flex items-start gap-2">
             <MapPin className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
@@ -835,7 +854,7 @@ export default function Capture() {
           </div>
           <div className="flex items-start gap-2">
             <Package className="w-4 h-4 mt-0.5 text-emerald-500 flex-shrink-0" />
-            <span>List materials: "...used 20 outlets and 200 feet of wire..."</span>
+            <span>List materials with costs: "...used 20 outlets at $12 each..."</span>
           </div>
         </div>
       </div>
