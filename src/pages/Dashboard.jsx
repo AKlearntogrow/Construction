@@ -8,6 +8,7 @@ import ChangeOrdersTable from '../components/ChangeOrdersTable'
 import ProjectHealth from '../components/ProjectHealth'
 import BudgetChart from '../components/BudgetChart'
 import TicketModal from '../components/TicketModal'
+import ValueAtRisk from '../components/ValueAtRisk'
 import { FileText, Clock, DollarSign, CheckCircle, Loader2, Trash2, AlertCircle, Edit3 } from 'lucide-react'
 
 export default function Dashboard() {
@@ -162,6 +163,11 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* Value at Risk Dashboard */}
+      <div className="mb-8">
+        <ValueAtRisk darkMode={darkMode} />
+      </div>
 
       {/* Recent T&M Tickets - NEW SECTION with real data */}
       <div className={`rounded-2xl border p-6 mb-8 ${
