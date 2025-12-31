@@ -1,22 +1,47 @@
 import { useState, useEffect } from 'react'
-import { X, Save, Loader2, MapPin, FileText, Users, Package, Wrench, Calendar, AlertCircle } from 'lucide-react'
+import { X, Save, Loader2, MapPin, FileText, Users, Package, Wrench, AlertCircle, ImageIcon } from 'lucide-react'
 import { updateTicket } from '../services/ticketService'
+import { getActiveProjects } from '../services/projectService'
+import { getGlobalCostCodes } from '../services/costCodeService'
+import { getTicketAttachments } from '../services/attachmentService'
+import FileUpload from './FileUpload'
+import AttachmentGallery from './AttachmentGallery'
 
-/**
- * TicketModal - View and edit ticket details
- * 
- * Pragmatic Design:
- * - Single responsibility: display/edit one ticket
- * - Controlled component: parent manages open/close state
- * - Crash early: validates before save
- * - DRY: reusable field components
- */
 export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode }) {
-  // Local state for editing
   const [formData, setFormData] = useState({})
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState(null)
   const [hasChanges, setHasChanges] = useState(false)
+  
+  // Dropdown data
+  const [projects, setProjects] = useState([])
+  const [costCodes, setCostCodes] = useState([])
+  const [loadingDropdowns, setLoadingDropdowns] = useState(true)
+  
+  // Attachments state
+  const [attachments, setAttachments] = useState([])
+  const [loadingAttachments, setLoadingAttachments] = useState(false)
+
+  // Load dropdown data on mount
+  useEffect(() => {
+    loadDropdownData()
+  }, [])
+
+  const loadDropdownData = async () => {
+    setLoadingDropdowns(true)
+    try {
+      const [projectsData, costCodesData] = await Promise.all([
+        getActiveProjects(),
+        getGlobalCostCodes()
+      ])
+      setProjects(projectsData || [])
+      setCostCodes(costCodesData || [])
+    } catch (err) {
+      console.error('Failed to load dropdown data:', err)
+    } finally {
+      setLoadingDropdowns(false)
+    }
+  }
 
   // Initialize form when ticket changes
   useEffect(() => {
@@ -24,17 +49,33 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
       setFormData({
         description: ticket.description || '',
         location: ticket.location || '',
-        cost_code: ticket.cost_code || '',
-        project_name: ticket.project_name || '',
-        status: ticket.status || 'pending',
+        project_id: ticket.project_id || '',
+        cost_code_id: ticket.cost_code_id || '',
+        status: ticket.status || 'draft',
         compliance_notes: ticket.compliance_notes || '',
       })
       setHasChanges(false)
       setError(null)
+      loadAttachments()
     }
   }, [ticket])
 
-  // Don't render if not open
+  const loadAttachments = async () => {
+    if (!ticket?.id) return
+    setLoadingAttachments(true)
+    const { data } = await getTicketAttachments(ticket.id)
+    setAttachments(data || [])
+    setLoadingAttachments(false)
+  }
+
+  const handleUploadComplete = (newAttachments) => {
+    setAttachments(prev => [...newAttachments, ...prev])
+  }
+
+  const handleDeleteAttachment = (attachmentId) => {
+    setAttachments(prev => prev.filter(a => a.id !== attachmentId))
+  }
+
   if (!isOpen || !ticket) return null
 
   const handleChange = (field, value) => {
@@ -47,9 +88,27 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
     setError(null)
 
     try {
-      const updatedTicket = await updateTicket(ticket.id, formData)
+      // Build update object with only changed fields
+      const updates = {
+        description: formData.description,
+        location: formData.location,
+        status: formData.status,
+        compliance_notes: formData.compliance_notes,
+      }
+      
+      // Only include project_id if selected
+      if (formData.project_id) {
+        updates.project_id = formData.project_id
+      }
+      
+      // Only include cost_code_id if selected
+      if (formData.cost_code_id) {
+        updates.cost_code_id = formData.cost_code_id
+      }
+
+      const updatedTicket = await updateTicket(ticket.id, updates)
       setHasChanges(false)
-      onSave(updatedTicket) // Notify parent to refresh
+      onSave(updatedTicket)
       onClose()
     } catch (err) {
       console.error('Failed to save ticket:', err)
@@ -69,14 +128,12 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
     }
   }
 
-  // Click outside to close
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
       handleClose()
     }
   }
 
-  // Reusable field component
   const Field = ({ label, icon: Icon, children }) => (
     <div className="space-y-1">
       <label className={`text-xs font-medium flex items-center gap-1.5 ${
@@ -90,19 +147,19 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
   )
 
   const inputStyles = `w-full px-3 py-2 rounded-lg border transition-colors ${
-    darkMode 
-      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50 focus:bg-white/10' 
+    darkMode
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50 focus:bg-white/10'
       : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
   } outline-none`
 
-  const selectStyles = `w-full px-3 py-2 rounded-lg border transition-colors ${
-    darkMode 
-      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+  const selectStyles = `w-full px-3 py-2 rounded-lg border transition-colors appearance-none ${
+    darkMode
+      ? 'bg-slate-700 border-white/10 text-white focus:border-emerald-500/50'
       : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
   } outline-none`
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
@@ -121,7 +178,7 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
               Created {new Date(ticket.created_at).toLocaleString()}
             </p>
           </div>
-          <button 
+          <button
             onClick={handleClose}
             className={`p-2 rounded-lg transition-colors ${
               darkMode ? 'hover:bg-white/10 text-white/60' : 'hover:bg-slate-100 text-slate-400'
@@ -135,15 +192,34 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
         <div className="p-4 space-y-4">
           {/* Status */}
           <Field label="STATUS" icon={AlertCircle}>
-            <select 
+            <select
               value={formData.status}
               onChange={(e) => handleChange('status', e.target.value)}
               className={selectStyles}
             >
-              <option value="pending">Pending</option>
-              <option value="submitted">Submitted</option>
+              <option value="draft">Draft</option>
+              <option value="pending_review">Pending Review</option>
               <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
+              <option value="billed">Billed</option>
+              <option value="paid">Paid</option>
+            </select>
+          </Field>
+
+          {/* Project Dropdown */}
+          <Field label="PROJECT" icon={Package}>
+            <select
+              value={formData.project_id}
+              onChange={(e) => handleChange('project_id', e.target.value)}
+              className={selectStyles}
+              disabled={loadingDropdowns}
+            >
+              <option value="">Select a project...</option>
+              {projects.map(project => (
+                <option key={project.id} value={project.id}>
+                  {project.project_code} - {project.name}
+                </option>
+              ))}
             </select>
           </Field>
 
@@ -170,29 +246,25 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
               />
             </Field>
 
+            {/* Cost Code Dropdown */}
             <Field label="COST CODE" icon={Wrench}>
-              <input
-                type="text"
-                value={formData.cost_code}
-                onChange={(e) => handleChange('cost_code', e.target.value)}
-                className={inputStyles}
-                placeholder="e.g., 26 05 00"
-              />
+              <select
+                value={formData.cost_code_id}
+                onChange={(e) => handleChange('cost_code_id', e.target.value)}
+                className={selectStyles}
+                disabled={loadingDropdowns}
+              >
+                <option value="">Select cost code...</option>
+                {costCodes.map(cc => (
+                  <option key={cc.id} value={cc.id}>
+                    {cc.code} - {cc.name}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
 
-          {/* Project */}
-          <Field label="PROJECT" icon={Package}>
-            <input
-              type="text"
-              value={formData.project_name}
-              onChange={(e) => handleChange('project_name', e.target.value)}
-              className={inputStyles}
-              placeholder="Project name..."
-            />
-          </Field>
-
-          {/* Labor Summary (read-only for now) */}
+          {/* Labor Summary */}
           {ticket.labor && ticket.labor.length > 0 && (
             <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -204,15 +276,15 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
               <div className="grid grid-cols-3 gap-4">
                 {ticket.labor.map((item, idx) => (
                   <div key={idx} className={`text-sm ${darkMode ? 'text-white/80' : 'text-slate-700'}`}>
-                    <span className="font-medium">{item.workers || item.trade}</span>
-                    <span className="text-emerald-500 ml-2">{item.hours_total || item.hours}h</span>
+                    <span className="font-medium">{item.trade || item.workers}</span>
+                    <span className="text-emerald-500 ml-2">{item.hours || item.hours_total}h</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Materials Summary (read-only for now) */}
+          {/* Materials Summary */}
           {ticket.materials && ticket.materials.length > 0 && (
             <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
               <div className="flex items-center gap-2 mb-2">
@@ -256,6 +328,33 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
             </div>
           </div>
 
+          {/* Attachments Section */}
+          <div className={`p-4 rounded-xl border ${darkMode ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="flex items-center gap-2 mb-3">
+              <ImageIcon className="w-4 h-4 text-blue-500" />
+              <span className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+                PHOTOS & VIDEOS
+              </span>
+              {loadingAttachments && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+            </div>
+            
+            {attachments.length > 0 && (
+              <div className="mb-4">
+                <AttachmentGallery
+                  attachments={attachments}
+                  onDelete={handleDeleteAttachment}
+                  editable={true}
+                />
+              </div>
+            )}
+            
+            <FileUpload
+              ticketId={ticket.id}
+              onUploadComplete={handleUploadComplete}
+              disabled={false}
+            />
+          </div>
+
           {/* Compliance Notes */}
           <Field label="COMPLIANCE NOTES" icon={AlertCircle}>
             <textarea
@@ -267,7 +366,7 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
             />
           </Field>
 
-          {/* Original Transcript (read-only) */}
+          {/* Original Transcript */}
           {ticket.original_transcript && (
             <div className={`p-4 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
               <p className={`text-xs font-medium mb-2 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
@@ -297,14 +396,14 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
           <button
             onClick={handleClose}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              darkMode 
-                ? 'text-white/60 hover:bg-white/10' 
+              darkMode
+                ? 'text-white/60 hover:bg-white/10'
                 : 'text-slate-500 hover:bg-slate-100'
             }`}
           >
             Cancel
           </button>
-          
+
           <button
             onClick={handleSave}
             disabled={isSaving || !hasChanges}
