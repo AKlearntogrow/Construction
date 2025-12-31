@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { 
   Mic, 
   MicOff, 
@@ -312,7 +312,7 @@ export default function Capture() {
         total_amount: grandTotal,
         original_transcript: transcript,
         compliance_notes: extractedData?.compliance || '',
-        status: 'pending',
+        status: 'pending_review',
       }
 
       // Create the ticket
@@ -481,7 +481,7 @@ export default function Capture() {
                       Processing...
                     </>
                   ) : (
-                    'Extract with AI →'
+                    'Extract with AI â†’'
                   )}
                 </button>
               </div>
@@ -861,3 +861,4 @@ export default function Capture() {
     </main>
   )
 }
+

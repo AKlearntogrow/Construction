@@ -1,183 +1,93 @@
-// src/services/changeOrderService.js
-//
-// Change Order Service - All database operations for Change Orders
-//
-// Pragmatic Design:
-// - Single responsibility: handles CO CRUD and ticket linking
-// - Crash early: throws errors rather than hiding them
-// - DRY: reusable functions
-
-import { supabase } from '../lib/supabase';
-
-// ============================================
-// CREATE
-// ============================================
-
-/**
- * Create a new Change Order
- * @param {Object} data - { title, project_name, notes }
- * @returns {Promise<Object>} The created change order
+﻿/**
+ * Change Order Service - Industry Standard Schema
+ * Handles Change Order and PCO operations
  */
-export async function createChangeOrder(data) {
-  // Generate CO number
-  const { data: coNumberResult, error: coNumberError } = await supabase
-    .rpc('generate_co_number');
 
-  if (coNumberError) {
-    console.error('Error generating CO number:', coNumberError);
-    throw new Error(`Failed to generate CO number: ${coNumberError.message}`);
-  }
+import { supabase } from '../lib/supabase'
 
-  const changeOrder = {
-    co_number: coNumberResult,
-    title: data.title,
-    project_name: data.project_name || '',
-    notes: data.notes || '',
-    status: 'draft',
-    original_amount: 0,
-    current_amount: 0,
-  };
-
-  const { data: result, error } = await supabase
-    .from('change_orders')
-    .insert([changeOrder])
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating change order:', error);
-    throw new Error(`Failed to create change order: ${error.message}`);
-  }
-
-  return result;
-}
-
-// ============================================
-// READ
-// ============================================
+// ============================================================================
+// CHANGE ORDERS (CO)
+// ============================================================================
 
 /**
  * Get all change orders
- * @returns {Promise<Array>} Array of change orders
  */
 export async function getAllChangeOrders() {
   const { data, error } = await supabase
     .from('change_orders')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select(`
+      *,
+      project:project_id(id, project_code, name)
+    `)
+    .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Error fetching change orders:', error);
-    throw new Error(`Failed to fetch change orders: ${error.message}`);
-  }
-
-  return data || [];
+  if (error) throw error
+  return data
 }
 
 /**
- * Get a single change order by ID with its tickets
- * @param {string} id - The change order UUID
- * @returns {Promise<Object>} The change order with tickets array
+ * Get change orders for a specific project
  */
-export async function getChangeOrderById(id) {
-  // Get the change order
-  const { data: changeOrder, error: coError } = await supabase
+export async function getChangeOrdersByProject(projectId) {
+  const { data, error } = await supabase
     .from('change_orders')
     .select('*')
-    .eq('id', id)
-    .single();
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
 
-  if (coError) {
-    console.error('Error fetching change order:', coError);
-    throw new Error(`Failed to fetch change order: ${coError.message}`);
-  }
+  if (error) throw error
+  return data
+}
+
+/**
+ * Get change order by ID with tickets
+ */
+export async function getChangeOrderById(id) {
+  const { data: co, error: coError } = await supabase
+    .from('change_orders')
+    .select(`
+      *,
+      project:project_id(id, project_code, name)
+    `)
+    .eq('id', id)
+    .single()
+
+  if (coError) throw coError
 
   // Get linked tickets
   const { data: tickets, error: ticketsError } = await supabase
     .from('tickets')
     .select('*')
     .eq('change_order_id', id)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
 
-  if (ticketsError) {
-    console.error('Error fetching tickets:', ticketsError);
-    throw new Error(`Failed to fetch tickets: ${ticketsError.message}`);
-  }
+  if (ticketsError) throw ticketsError
 
-  return {
-    ...changeOrder,
-    tickets: tickets || [],
-  };
+  return { ...co, tickets: tickets || [] }
 }
 
 /**
- * Get change orders by status
- * @param {string} status - 'draft' | 'submitted' | 'approved' | 'rejected'
- * @returns {Promise<Array>} Array of change orders
+ * Create a new change order
  */
-export async function getChangeOrdersByStatus(status) {
+export async function createChangeOrder(coData) {
   const { data, error } = await supabase
     .from('change_orders')
-    .select('*')
-    .eq('status', status)
-    .order('created_at', { ascending: false });
+    .insert([{
+      project_id: coData.project_id,
+      title: coData.title,
+      description: coData.description || coData.notes,
+      notes: coData.notes,
+      status: 'draft'
+    }])
+    .select()
+    .single()
 
-  if (error) {
-    console.error('Error fetching change orders by status:', error);
-    throw new Error(`Failed to fetch change orders: ${error.message}`);
-  }
-
-  return data || [];
+  if (error) throw error
+  return data
 }
-
-/**
- * Get change order statistics for dashboard
- * @returns {Promise<Object>} Stats object
- */
-export async function getChangeOrderStats() {
-  const { data, error } = await supabase
-    .from('change_orders')
-    .select('status, original_amount, current_amount');
-
-  if (error) {
-    console.error('Error fetching CO stats:', error);
-    throw new Error(`Failed to fetch stats: ${error.message}`);
-  }
-
-  const stats = {
-    total: data.length,
-    draft: 0,
-    submitted: 0,
-    approved: 0,
-    rejected: 0,
-    totalOriginal: 0,
-    totalCurrent: 0,
-    totalVariance: 0,
-  };
-
-  data.forEach(co => {
-    stats[co.status] = (stats[co.status] || 0) + 1;
-    stats.totalOriginal += parseFloat(co.original_amount) || 0;
-    stats.totalCurrent += parseFloat(co.current_amount) || 0;
-  });
-
-  stats.totalVariance = stats.totalCurrent - stats.totalOriginal;
-  stats.variancePercent = stats.totalOriginal > 0 
-    ? ((stats.totalVariance / stats.totalOriginal) * 100).toFixed(1)
-    : 0;
-
-  return stats;
-}
-
-// ============================================
-// UPDATE
-// ============================================
 
 /**
  * Update a change order
- * @param {string} id - The change order UUID
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object>} The updated change order
  */
 export async function updateChangeOrder(id, updates) {
   const { data, error } = await supabase
@@ -185,266 +95,259 @@ export async function updateChangeOrder(id, updates) {
     .update(updates)
     .eq('id', id)
     .select()
-    .single();
+    .single()
 
-  if (error) {
-    console.error('Error updating change order:', error);
-    throw new Error(`Failed to update change order: ${error.message}`);
-  }
-
-  return data;
+  if (error) throw error
+  return data
 }
 
 /**
- * Submit a change order for approval
- * Locks the original_amount if this is the first submission
- * @param {string} id - The change order UUID
- * @param {string} submittedBy - Who is submitting
- * @returns {Promise<Object>} The updated change order
+ * Delete a change order
  */
-export async function submitChangeOrder(id, submittedBy = 'User') {
-  // Get current CO to check if original_amount needs to be locked
-  const { data: current, error: fetchError } = await supabase
+export async function deleteChangeOrder(id) {
+  // First unlink any tickets
+  await supabase
+    .from('tickets')
+    .update({ change_order_id: null })
+    .eq('change_order_id', id)
+
+  const { error } = await supabase
     .from('change_orders')
-    .select('original_amount, current_amount')
+    .delete()
     .eq('id', id)
-    .single();
 
-  if (fetchError) {
-    throw new Error(`Failed to fetch change order: ${fetchError.message}`);
-  }
+  if (error) throw error
+  return true
+}
 
-  const updates = {
-    status: 'submitted',
-    submitted_at: new Date().toISOString(),
-  };
+/**
+ * Submit change order for approval
+ */
+export async function submitChangeOrder(id) {
+  // Get current total from tickets
+  const { data: tickets } = await supabase
+    .from('tickets')
+    .select('total_amount')
+    .eq('change_order_id', id)
 
-  // Lock original_amount on first submission (when it's 0)
-  if (parseFloat(current.original_amount) === 0) {
-    updates.original_amount = current.current_amount;
-  }
+  const currentAmount = tickets?.reduce((sum, t) => sum + parseFloat(t.total_amount || 0), 0) || 0
 
   const { data, error } = await supabase
     .from('change_orders')
-    .update(updates)
+    .update({
+      status: 'submitted',
+      original_amount: currentAmount,
+      current_amount: currentAmount,
+      submitted_at: new Date().toISOString()
+    })
     .eq('id', id)
     .select()
-    .single();
+    .single()
 
-  if (error) {
-    throw new Error(`Failed to submit change order: ${error.message}`);
-  }
-
-  return data;
+  if (error) throw error
+  return data
 }
 
 /**
  * Approve a change order
- * @param {string} id - The change order UUID
- * @param {string} approvedBy - Who is approving
- * @returns {Promise<Object>} The updated change order
  */
-export async function approveChangeOrder(id, approvedBy = 'Approver') {
+export async function approveChangeOrder(id, approverName) {
   const { data, error } = await supabase
     .from('change_orders')
     .update({
       status: 'approved',
-      approved_by: approvedBy,
-      approved_at: new Date().toISOString(),
+      approved_at: new Date().toISOString()
     })
     .eq('id', id)
     .select()
-    .single();
+    .single()
 
-  if (error) {
-    throw new Error(`Failed to approve change order: ${error.message}`);
-  }
-
-  // Update all linked tickets to approved
-  await supabase
-    .from('tickets')
-    .update({ status: 'approved' })
-    .eq('change_order_id', id);
-
-  return data;
+  if (error) throw error
+  return data
 }
 
 /**
  * Reject a change order
- * @param {string} id - The change order UUID
- * @param {string} rejectedBy - Who is rejecting
- * @returns {Promise<Object>} The updated change order
  */
-export async function rejectChangeOrder(id, rejectedBy = 'Approver') {
+export async function rejectChangeOrder(id, rejectorName, reason = null) {
   const { data, error } = await supabase
     .from('change_orders')
     .update({
       status: 'rejected',
-      approved_by: rejectedBy, // Reusing field for who made the decision
-      approved_at: new Date().toISOString(),
+      rejected_at: new Date().toISOString(),
+      rejection_reason: reason
     })
     .eq('id', id)
     .select()
-    .single();
+    .single()
 
-  if (error) {
-    throw new Error(`Failed to reject change order: ${error.message}`);
-  }
-
-  // Update all linked tickets to rejected
-  await supabase
-    .from('tickets')
-    .update({ status: 'rejected' })
-    .eq('change_order_id', id);
-
-  return data;
+  if (error) throw error
+  return data
 }
-
-// ============================================
-// DELETE
-// ============================================
-
-/**
- * Delete a change order (only if draft)
- * @param {string} id - The change order UUID
- * @returns {Promise<boolean>} True if successful
- */
-export async function deleteChangeOrder(id) {
-  // First, unlink any tickets
-  await supabase
-    .from('tickets')
-    .update({ change_order_id: null })
-    .eq('change_order_id', id);
-
-  // Then delete the CO
-  const { error } = await supabase
-    .from('change_orders')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    console.error('Error deleting change order:', error);
-    throw new Error(`Failed to delete change order: ${error.message}`);
-  }
-
-  return true;
-}
-
-// ============================================
-// TICKET LINKING
-// ============================================
 
 /**
  * Add tickets to a change order
- * @param {string} changeOrderId - The change order UUID
- * @param {Array<string>} ticketIds - Array of ticket UUIDs
- * @returns {Promise<Object>} The updated change order with new total
  */
 export async function addTicketsToChangeOrder(changeOrderId, ticketIds) {
-  // Update tickets to link to this CO
-  const { error: linkError } = await supabase
+  const { error } = await supabase
     .from('tickets')
     .update({ change_order_id: changeOrderId })
-    .in('id', ticketIds);
+    .in('id', ticketIds)
 
-  if (linkError) {
-    throw new Error(`Failed to link tickets: ${linkError.message}`);
-  }
+  if (error) throw error
 
-  // Recalculate current_amount
-  await recalculateChangeOrderTotal(changeOrderId);
-
-  // Return updated CO
-  return getChangeOrderById(changeOrderId);
+  // Return updated CO with tickets
+  return getChangeOrderById(changeOrderId)
 }
 
 /**
- * Remove a ticket from its change order
- * @param {string} ticketId - The ticket UUID
- * @param {string} changeOrderId - The change order UUID (to recalculate)
- * @returns {Promise<Object>} The updated change order
+ * Remove ticket from change order
  */
 export async function removeTicketFromChangeOrder(ticketId, changeOrderId) {
-  // Unlink the ticket
   const { error } = await supabase
     .from('tickets')
     .update({ change_order_id: null })
-    .eq('id', ticketId);
+    .eq('id', ticketId)
 
-  if (error) {
-    throw new Error(`Failed to unlink ticket: ${error.message}`);
-  }
+  if (error) throw error
 
-  // Recalculate total
-  await recalculateChangeOrderTotal(changeOrderId);
+  // Update CO current amount
+  await recalculateCOAmount(changeOrderId)
 
-  return getChangeOrderById(changeOrderId);
+  return getChangeOrderById(changeOrderId)
 }
 
 /**
- * Recalculate a change order's current_amount from its tickets
- * @param {string} changeOrderId - The change order UUID
+ * Recalculate change order amount from tickets
  */
-async function recalculateChangeOrderTotal(changeOrderId) {
-  // Get sum of linked tickets
-  const { data: tickets, error: fetchError } = await supabase
+async function recalculateCOAmount(changeOrderId) {
+  const { data: tickets } = await supabase
     .from('tickets')
     .select('total_amount')
-    .eq('change_order_id', changeOrderId);
+    .eq('change_order_id', changeOrderId)
 
-  if (fetchError) {
-    throw new Error(`Failed to fetch tickets: ${fetchError.message}`);
-  }
+  const currentAmount = tickets?.reduce((sum, t) => sum + parseFloat(t.total_amount || 0), 0) || 0
 
-  const total = tickets.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0);
-
-  // Update the CO
-  const { error: updateError } = await supabase
+  await supabase
     .from('change_orders')
-    .update({ current_amount: total })
-    .eq('id', changeOrderId);
-
-  if (updateError) {
-    throw new Error(`Failed to update total: ${updateError.message}`);
-  }
+    .update({ current_amount: currentAmount })
+    .eq('id', changeOrderId)
 }
 
-// ============================================
-// HELPERS
-// ============================================
-
 /**
- * Get tickets not assigned to any change order
- * @returns {Promise<Array>} Array of unassigned tickets
+ * Get unassigned tickets for a project
  */
-export async function getUnassignedTickets() {
-  const { data, error } = await supabase
+export async function getUnassignedTickets(projectId = null) {
+  let query = supabase
     .from('tickets')
-    .select('*')
+    .select(`
+      *,
+      project:project_id(id, project_code, name)
+    `)
     .is('change_order_id', null)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
 
-  if (error) {
-    throw new Error(`Failed to fetch unassigned tickets: ${error.message}`);
+  if (projectId) {
+    query = query.eq('project_id', projectId)
   }
 
-  return data || [];
+  const { data, error } = await query
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Get change order statistics
+ */
+export async function getChangeOrderStats(projectId = null) {
+  let query = supabase.from('change_orders').select('*')
+  
+  if (projectId) {
+    query = query.eq('project_id', projectId)
+  }
+
+  const { data, error } = await query
+
+  if (error) throw error
+
+  const stats = {
+    total: data?.length || 0,
+    draft: 0,
+    submitted: 0,
+    approved: 0,
+    rejected: 0,
+    totalOriginal: 0,
+    totalCurrent: 0,
+    totalVariance: 0,
+    variancePercent: 0
+  }
+
+  data?.forEach(co => {
+    stats[co.status] = (stats[co.status] || 0) + 1
+    stats.totalOriginal += parseFloat(co.original_amount || 0)
+    stats.totalCurrent += parseFloat(co.current_amount || 0)
+  })
+
+  stats.totalVariance = stats.totalCurrent - stats.totalOriginal
+  stats.variancePercent = stats.totalOriginal > 0 
+    ? ((stats.totalVariance / stats.totalOriginal) * 100).toFixed(1)
+    : 0
+
+  return stats
 }
 
 /**
  * Calculate variance for a change order
- * @param {Object} changeOrder - The change order object
- * @returns {Object} { amount, percent, isOverBudget }
  */
 export function calculateVariance(changeOrder) {
-  const original = parseFloat(changeOrder.original_amount) || 0;
-  const current = parseFloat(changeOrder.current_amount) || 0;
-  const amount = current - original;
-  const percent = original > 0 ? ((amount / original) * 100) : 0;
+  const original = parseFloat(changeOrder.original_amount || 0)
+  const current = parseFloat(changeOrder.current_amount || 0)
+  const variance = current - original
+  const percent = original > 0 ? ((variance / original) * 100).toFixed(1) : 0
 
   return {
-    amount,
-    percent: percent.toFixed(1),
-    isOverBudget: amount > 0,
-  };
+    original,
+    current,
+    amount: variance,
+    percent,
+    isOverBudget: variance > 0
+  }
+}
+
+// ============================================================================
+// STATUS OPTIONS
+// ============================================================================
+
+export const CO_STATUSES = [
+  { value: 'draft', label: 'Draft', color: 'slate' },
+  { value: 'pending_submission', label: 'Pending Submission', color: 'amber' },
+  { value: 'submitted', label: 'Submitted', color: 'blue' },
+  { value: 'under_review', label: 'Under Review', color: 'purple' },
+  { value: 'approved', label: 'Approved', color: 'emerald' },
+  { value: 'rejected', label: 'Rejected', color: 'red' },
+  { value: 'void', label: 'Void', color: 'gray' },
+  { value: 'executed', label: 'Executed', color: 'green' },
+]
+
+export const CHANGE_REASONS = [
+  { value: 'owner_request', label: 'Owner Request' },
+  { value: 'design_change', label: 'Design Change' },
+  { value: 'field_condition', label: 'Field Condition' },
+  { value: 'code_requirement', label: 'Code Requirement' },
+  { value: 'value_engineering', label: 'Value Engineering' },
+  { value: 'rfi_response', label: 'RFI Response' },
+  { value: 'error_omission', label: 'Error/Omission' },
+  { value: 'weather', label: 'Weather' },
+  { value: 'other', label: 'Other' },
+]
+
+export function getCOStatusColor(status) {
+  const found = CO_STATUSES.find(s => s.value === status)
+  return found?.color || 'slate'
+}
+
+export function getCOStatusLabel(status) {
+  const found = CO_STATUSES.find(s => s.value === status)
+  return found?.label || status
 }

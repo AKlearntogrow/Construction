@@ -1,161 +1,166 @@
-// src/services/ticketService.js
-// 
-// Ticket Service - All database operations for T&M tickets
-// 
-// Pragmatic Design Principles Applied:
-// - Single responsibility: only handles ticket CRUD
-// - Crash early: throws errors rather than hiding them
-// - DRY: reusable functions for all ticket operations
-// - Contract: clear input/output expectations
+﻿/**
+ * Ticket Service - Industry Standard Schema
+ * Handles T&M Ticket operations
+ */
 
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'
 
-// ============================================
-// CREATE
-// ============================================
+// ============================================================================
+// TICKETS (T&M)
+// ============================================================================
 
 /**
- * Create a new T&M ticket
- * @param {Object} ticketData - The ticket data from AI extraction
- * @returns {Promise<Object>} The created ticket with ID
- * @throws {Error} If database operation fails
+ * Get all tickets for a project
  */
-export async function createTicket(ticketData) {
-  // Calculate totals before saving
-  const laborTotal = calculateLaborTotal(ticketData.labor || []);
-  const materialsTotal = calculateMaterialsTotal(ticketData.materials || []);
-  
-  const ticket = {
-    description: ticketData.description || '',
-    location: ticketData.location || '',
-    cost_code: ticketData.cost_code || ticketData.costCode || '',
-    project_name: ticketData.project_name || ticketData.project || 'Default Project',
-    labor: ticketData.labor || [],
-    materials: ticketData.materials || [],
-    labor_total: laborTotal,
-    materials_total: materialsTotal,
-    total_amount: laborTotal + materialsTotal,
-    original_transcript: ticketData.original_transcript || ticketData.transcript || '',
-    compliance_notes: ticketData.compliance_notes || ticketData.compliance || '',
-    status: ticketData.status || 'pending',
-  };
-
+export async function getTicketsByProject(projectId) {
   const { data, error } = await supabase
     .from('tickets')
-    .insert([ticket])
-    .select()
-    .single();
+    .select(`
+      *,
+      cost_code:cost_code_id(id, code, name),
+      change_order:change_order_id(id, co_number, title),
+      pco:potential_change_order_id(id, pco_number, title)
+    `)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Error creating ticket:', error);
-    throw new Error(`Failed to create ticket: ${error.message}`);
-  }
-
-  return data;
+  if (error) throw error
+  return data
 }
 
-// ============================================
-// READ
-// ============================================
-
 /**
- * Get all tickets, ordered by most recent first
- * @returns {Promise<Array>} Array of tickets
+ * Get all tickets (across all projects)
  */
 export async function getAllTickets() {
   const { data, error } = await supabase
     .from('tickets')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select(`
+      *,
+      project:project_id(id, project_code, name),
+      cost_code:cost_code_id(id, code, name),
+      change_order:change_order_id(id, co_number, title)
+    `)
+    .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Error fetching tickets:', error);
-    throw new Error(`Failed to fetch tickets: ${error.message}`);
-  }
-
-  return data || [];
+  if (error) throw error
+  return data
 }
 
 /**
- * Get a single ticket by ID
- * @param {string} id - The ticket UUID
- * @returns {Promise<Object>} The ticket
+ * Get ticket by ID
  */
 export async function getTicketById(id) {
   const { data, error } = await supabase
     .from('tickets')
-    .select('*')
+    .select(`
+      *,
+      project:project_id(id, project_code, name),
+      cost_code:cost_code_id(id, code, name),
+      change_order:change_order_id(id, co_number, title),
+      pco:potential_change_order_id(id, pco_number, title)
+    `)
     .eq('id', id)
-    .single();
+    .single()
 
-  if (error) {
-    console.error('Error fetching ticket:', error);
-    throw new Error(`Failed to fetch ticket: ${error.message}`);
-  }
-
-  return data;
+  if (error) throw error
+  return data
 }
 
 /**
- * Get tickets filtered by status
- * @param {string} status - 'pending' | 'approved' | 'rejected' | 'submitted'
- * @returns {Promise<Array>} Array of tickets with that status
+ * Get unassigned tickets (not linked to any CO)
  */
-export async function getTicketsByStatus(status) {
-  const { data, error } = await supabase
+export async function getUnassignedTickets(projectId = null) {
+  let query = supabase
     .from('tickets')
-    .select('*')
-    .eq('status', status)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching tickets by status:', error);
-    throw new Error(`Failed to fetch tickets: ${error.message}`);
-  }
-
-  return data || [];
-}
-
-/**
- * Get the most recent N tickets
- * @param {number} limit - How many tickets to return (default 10)
- * @returns {Promise<Array>} Array of recent tickets
- */
-export async function getRecentTickets(limit = 10) {
-  const { data, error } = await supabase
-    .from('tickets')
-    .select('*')
+    .select(`
+      *,
+      project:project_id(id, project_code, name)
+    `)
+    .is('change_order_id', null)
     .order('created_at', { ascending: false })
-    .limit(limit);
 
-  if (error) {
-    console.error('Error fetching recent tickets:', error);
-    throw new Error(`Failed to fetch recent tickets: ${error.message}`);
+  if (projectId) {
+    query = query.eq('project_id', projectId)
   }
 
-  return data || [];
+  const { data, error } = await query
+
+  if (error) throw error
+  return data
 }
 
-// ============================================
-// UPDATE
-// ============================================
+/**
+ * Create a new ticket
+ */
+export async function createTicket(ticketData) {
+  // Calculate totals
+  const laborTotal = calculateLaborTotal(ticketData.labor || [])
+  const materialsTotal = calculateMaterialsTotal(ticketData.materials || [])
+  const equipmentTotal = calculateEquipmentTotal(ticketData.equipment || [])
+  
+  const subtotal = laborTotal + materialsTotal + equipmentTotal
+  const markupAmount = subtotal * (parseFloat(ticketData.markup_percent || 0) / 100)
+  const totalAmount = subtotal + markupAmount
+
+  const insertData = {
+    project_id: ticketData.project_id,
+    description: ticketData.description,
+    location: ticketData.location,
+    work_date: ticketData.work_date || new Date().toISOString().split('T')[0],
+    cost_code_id: ticketData.cost_code_id,
+    labor: ticketData.labor || [],
+    labor_total: laborTotal,
+    materials: ticketData.materials || [],
+    materials_total: materialsTotal,
+    equipment: ticketData.equipment || [],
+    equipment_total: equipmentTotal,
+    markup_percent: ticketData.markup_percent || 0,
+    markup_amount: markupAmount,
+    total_amount: totalAmount,
+    original_transcript: ticketData.original_transcript,
+    change_order_id: ticketData.change_order_id,
+    potential_change_order_id: ticketData.potential_change_order_id,
+    status: ticketData.status || 'draft'
+  }
+
+  const { data, error } = await supabase
+    .from('tickets')
+    .insert([insertData])
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
 
 /**
  * Update a ticket
- * @param {string} id - The ticket UUID
- * @param {Object} updates - Fields to update
- * @returns {Promise<Object>} The updated ticket
  */
 export async function updateTicket(id, updates) {
-  // Recalculate totals if labor or materials changed
-  if (updates.labor !== undefined || updates.materials !== undefined) {
-    const currentTicket = await getTicketById(id);
-    const labor = updates.labor ?? currentTicket.labor ?? [];
-    const materials = updates.materials ?? currentTicket.materials ?? [];
-    
-    updates.labor_total = calculateLaborTotal(labor);
-    updates.materials_total = calculateMaterialsTotal(materials);
-    updates.total_amount = updates.labor_total + updates.materials_total;
+  // Recalculate totals if labor/materials/equipment changed
+  if (updates.labor || updates.materials || updates.equipment) {
+    const { data: existing } = await supabase
+      .from('tickets')
+      .select('labor, materials, equipment, markup_percent')
+      .eq('id', id)
+      .single()
+
+    const labor = updates.labor || existing.labor || []
+    const materials = updates.materials || existing.materials || []
+    const equipment = updates.equipment || existing.equipment || []
+    const markupPercent = updates.markup_percent ?? existing.markup_percent ?? 0
+
+    const laborTotal = calculateLaborTotal(labor)
+    const materialsTotal = calculateMaterialsTotal(materials)
+    const equipmentTotal = calculateEquipmentTotal(equipment)
+    const subtotal = laborTotal + materialsTotal + equipmentTotal
+    const markupAmount = subtotal * (markupPercent / 100)
+
+    updates.labor_total = laborTotal
+    updates.materials_total = materialsTotal
+    updates.equipment_total = equipmentTotal
+    updates.markup_amount = markupAmount
+    updates.total_amount = subtotal + markupAmount
   }
 
   const { data, error } = await supabase
@@ -163,171 +168,184 @@ export async function updateTicket(id, updates) {
     .update(updates)
     .eq('id', id)
     .select()
-    .single();
+    .single()
 
-  if (error) {
-    console.error('Error updating ticket:', error);
-    throw new Error(`Failed to update ticket: ${error.message}`);
-  }
-
-  return data;
+  if (error) throw error
+  return data
 }
-
-/**
- * Quick status update
- * @param {string} id - The ticket UUID
- * @param {string} status - New status
- * @returns {Promise<Object>} The updated ticket
- */
-export async function updateTicketStatus(id, status) {
-  return updateTicket(id, { status });
-}
-
-// ============================================
-// DELETE
-// ============================================
 
 /**
  * Delete a ticket
- * @param {string} id - The ticket UUID
- * @returns {Promise<boolean>} True if successful
  */
 export async function deleteTicket(id) {
   const { error } = await supabase
     .from('tickets')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
 
-  if (error) {
-    console.error('Error deleting ticket:', error);
-    throw new Error(`Failed to delete ticket: ${error.message}`);
-  }
-
-  return true;
+  if (error) throw error
+  return true
 }
 
-// ============================================
-// AGGREGATE QUERIES (for Dashboard KPIs)
-// ============================================
+/**
+ * Assign ticket to a change order
+ */
+export async function assignTicketToCO(ticketId, changeOrderId) {
+  const { data, error } = await supabase
+    .from('tickets')
+    .update({ change_order_id: changeOrderId })
+    .eq('id', ticketId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
 
 /**
- * Get statistics for dashboard KPIs
- * @returns {Promise<Object>} Stats object with counts and values
+ * Remove ticket from change order
+ */
+export async function removeTicketFromCO(ticketId) {
+  const { data, error } = await supabase
+    .from('tickets')
+    .update({ change_order_id: null })
+    .eq('id', ticketId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+// ============================================================================
+// CALCULATION HELPERS
+// ============================================================================
+
+function calculateLaborTotal(laborEntries) {
+  if (!Array.isArray(laborEntries)) return 0
+  return laborEntries.reduce((sum, entry) => {
+    const workers = parseFloat(entry.workers || entry.worker_count || 1)
+    const hours = parseFloat(entry.hours || 0)
+    const rate = parseFloat(entry.rate || 0)
+    return sum + (workers * hours * rate)
+  }, 0)
+}
+
+function calculateMaterialsTotal(materialEntries) {
+  if (!Array.isArray(materialEntries)) return 0
+  return materialEntries.reduce((sum, entry) => {
+    const quantity = parseFloat(entry.quantity || entry.qty || 1)
+    const unitCost = parseFloat(entry.unit_cost || entry.cost || 0)
+    return sum + (quantity * unitCost)
+  }, 0)
+}
+
+function calculateEquipmentTotal(equipmentEntries) {
+  if (!Array.isArray(equipmentEntries)) return 0
+  return equipmentEntries.reduce((sum, entry) => {
+    const hours = parseFloat(entry.hours || 0)
+    const rate = parseFloat(entry.rate || 0)
+    return sum + (hours * rate)
+  }, 0)
+}
+
+// ============================================================================
+// STATUS OPTIONS
+// ============================================================================
+
+export const TICKET_STATUSES = [
+  { value: 'draft', label: 'Draft', color: 'slate' },
+  { value: 'pending_review', label: 'Pending Review', color: 'amber' },
+  { value: 'approved', label: 'Approved', color: 'emerald' },
+  { value: 'rejected', label: 'Rejected', color: 'red' },
+  { value: 'billed', label: 'Billed', color: 'blue' },
+  { value: 'paid', label: 'Paid', color: 'green' },
+]
+
+export function getTicketStatusColor(status) {
+  const found = TICKET_STATUSES.find(s => s.value === status)
+  return found?.color || 'slate'
+}
+
+export function getTicketStatusLabel(status) {
+  const found = TICKET_STATUSES.find(s => s.value === status)
+  return found?.label || status
+}
+
+// ============================================================================
+// DASHBOARD HELPERS
+// ============================================================================
+
+/**
+ * Get recent tickets for dashboard
+ */
+export async function getRecentTickets(limit = 10) {
+  const { data, error } = await supabase
+    .from('tickets')
+    .select(`
+      *,
+      project:project_id(id, project_code, name),
+      change_order:change_order_id(id, co_number, title)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Get ticket statistics for dashboard
  */
 export async function getTicketStats() {
   const { data, error } = await supabase
     .from('tickets')
-    .select('status, total_amount, created_at');
+    .select('status, total_amount, created_at')
 
-  if (error) {
-    console.error('Error fetching ticket stats:', error);
-    throw new Error(`Failed to fetch stats: ${error.message}`);
-  }
+  if (error) throw error
 
-  // Initialize stats
+  const now = new Date()
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
   const stats = {
-    total: data.length,
-    pending: 0,
+    total: data?.length || 0,
+    draft: 0,
+    pending_review: 0,
     approved: 0,
     rejected: 0,
-    submitted: 0,
+    billed: 0,
+    paid: 0,
     totalValue: 0,
-    approvedValue: 0,
     pendingValue: 0,
+    approvedValue: 0,
     thisMonthCount: 0,
-    thisMonthValue: 0,
-  };
-
-  // Calculate current month boundaries
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  // Aggregate data
-  data.forEach(ticket => {
-    const amount = parseFloat(ticket.total_amount) || 0;
-    const createdAt = new Date(ticket.created_at);
-
-    // Count by status
-    stats[ticket.status] = (stats[ticket.status] || 0) + 1;
-    
-    // Sum total value
-    stats.totalValue += amount;
-    
-    // Sum by status
-    if (ticket.status === 'approved') {
-      stats.approvedValue += amount;
-    } else if (ticket.status === 'pending') {
-      stats.pendingValue += amount;
-    }
-
-    // This month stats
-    if (createdAt >= startOfMonth) {
-      stats.thisMonthCount += 1;
-      stats.thisMonthValue += amount;
-    }
-  });
-
-  return stats;
-}
-
-/**
- * Get ticket counts grouped by status (for charts)
- * @returns {Promise<Array>} Array of {status, count} objects
- */
-export async function getStatusCounts() {
-  const { data, error } = await supabase
-    .from('tickets')
-    .select('status');
-
-  if (error) {
-    console.error('Error fetching status counts:', error);
-    throw new Error(`Failed to fetch status counts: ${error.message}`);
+    thisMonthValue: 0
   }
 
-  // Count occurrences of each status
-  const counts = {};
-  data.forEach(ticket => {
-    counts[ticket.status] = (counts[ticket.status] || 0) + 1;
-  });
+  data?.forEach(ticket => {
+    // Count by status
+    const status = ticket.status || 'draft'
+    stats[status] = (stats[status] || 0) + 1
+    
+    const amount = parseFloat(ticket.total_amount || 0)
+    stats.totalValue += amount
+    
+    if (status === 'pending_review') {
+      stats.pendingValue += amount
+    }
+    if (status === 'approved') {
+      stats.approvedValue += amount
+    }
+    
+    // This month
+    if (new Date(ticket.created_at) >= thisMonth) {
+      stats.thisMonthCount++
+      stats.thisMonthValue += amount
+    }
+  })
 
-  // Transform to array for charts
-  return Object.entries(counts).map(([status, count]) => ({
-    status,
-    count,
-  }));
-}
+  // Alias for backward compatibility
+  stats.pending = stats.pending_review
 
-// ============================================
-// HELPER FUNCTIONS (private)
-// ============================================
-
-/**
- * Calculate total labor cost from labor array
- * @param {Array} laborArray - Array of labor items
- * @returns {number} Total labor cost
- */
-function calculateLaborTotal(laborArray) {
-  if (!Array.isArray(laborArray)) return 0;
-  
-  return laborArray.reduce((sum, item) => {
-    const hours = parseFloat(item.hours) || 0;
-    const rate = parseFloat(item.rate) || 0;
-    return sum + (hours * rate);
-  }, 0);
-}
-
-/**
- * Calculate total materials cost from materials array
- * @param {Array} materialsArray - Array of material items
- * @returns {number} Total materials cost
- */
-function calculateMaterialsTotal(materialsArray) {
-  if (!Array.isArray(materialsArray)) return 0;
-  
-  return materialsArray.reduce((sum, item) => {
-    const quantity = parseFloat(item.quantity) || 0;
-    // Handle both naming conventions
-    const unitCost = parseFloat(item.unit_cost || item.unitCost) || 0;
-    return sum + (quantity * unitCost);
-  }, 0);
+  return stats
 }
