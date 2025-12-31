@@ -1,9 +1,10 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { ThemeProvider, useTheme } from './context/ThemeContext'
 import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
 import Capture from './pages/Capture'
 import ChangeOrders from './pages/ChangeOrders'
+import DailyLogs from './pages/DailyLogs'
 import Projects from './pages/Projects'
 
 function AppContent() {
@@ -35,3 +36,4 @@ function App() {
 }
 
 export default App
+
