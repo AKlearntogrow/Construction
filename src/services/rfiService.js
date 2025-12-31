@@ -58,6 +58,22 @@ export async function createRFI(rfiData) {
 /**
  * Respond to RFI
  */
+
+/**
+ * Update an RFI
+ */
+export async function updateRFI(id, updates) {
+  const { data, error } = await supabase
+    .from('rfis')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export async function respondToRFI(id, response) {
   const { data, error } = await supabase
     .from('rfis')
@@ -88,3 +104,4 @@ export const RFI_PRIORITIES = [
   { value: 'high', label: 'High', color: 'amber' },
   { value: 'urgent', label: 'Urgent', color: 'red' },
 ]
+
