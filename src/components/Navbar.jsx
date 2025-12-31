@@ -7,7 +7,8 @@ export default function Navbar({ currentPage, setCurrentPage }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: Building2 },
-    { id: 'change-orders', label: 'Change Orders', icon: FileText, Clipboard },
+    { id: 'change-orders', label: 'Change Orders', icon: FileText },
+    { id: 'daily-logs', label: 'Daily Logs', icon: Clipboard },
     { id: 'capture', label: 'Capture', icon: Mic },
   ]
 
@@ -69,4 +70,5 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     </nav>
   )
 }
+
 
