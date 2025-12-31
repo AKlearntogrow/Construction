@@ -8,7 +8,8 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: Building2 },
     { id: 'change-orders', label: 'Change Orders', icon: FileText },
-    { id: 'daily-logs', label: 'Daily Logs', icon: Clipboard, FileQuestion },
+    { id: 'daily-logs', label: 'Daily Logs', icon: Clipboard },
+    { id: 'rfis', label: 'RFIs', icon: FileQuestion },
     { id: 'capture', label: 'Capture', icon: Mic },
   ]
 
@@ -70,6 +71,7 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     </nav>
   )
 }
+
 
 
 
