@@ -1,29 +1,28 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { 
   getAllProjects, 
   createProject, 
   updateProject,
   deleteProject,
-  getProjectStats
+  PROJECT_TYPES,
+  PROJECT_STATUSES,
+  getProjectStatusColor,
+  getProjectStatusLabel
 } from '../services/projectService'
-import { validateProject, formatCurrency } from '../utils/validation'
+import { formatCurrency } from '../utils/validation'
 import { 
   Plus, 
   Loader2, 
   Building2, 
   AlertCircle, 
   Trash2, 
-  Edit3,
   X,
   Save,
   DollarSign,
   Calendar,
-  Users,
-  FileText,
-  CheckCircle,
-  Clock,
-  TrendingUp
+  MapPin,
+  Percent
 } from 'lucide-react'
 
 export default function Projects() {
@@ -39,11 +38,18 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
-    client_name: '',
-    original_budget: '',
-    start_date: '',
-    end_date: '',
-    status: 'active',
+    description: '',
+    project_type: 'commercial',
+    address: '',
+    city: '',
+    state: '',
+    budget: '',
+    original_contract_value: '',
+    planned_start_date: '',
+    planned_end_date: '',
+    status: 'planning',
+    default_labor_rate: '',
+    markup_percent: '10',
     notes: '',
   })
   const [formErrors, setFormErrors] = useState([])
@@ -57,7 +63,7 @@ export default function Projects() {
     try {
       setLoading(true)
       setError(null)
-      const data = await getAllProjects({ includeStats: true })
+      const data = await getAllProjects()
       setProjects(data)
     } catch (err) {
       console.error('Failed to fetch projects:', err)
@@ -71,11 +77,18 @@ export default function Projects() {
     setEditingProject(null)
     setFormData({
       name: '',
-      client_name: '',
-      original_budget: '',
-      start_date: '',
-      end_date: '',
-      status: 'active',
+      description: '',
+      project_type: 'commercial',
+      address: '',
+      city: '',
+      state: '',
+      budget: '',
+      original_contract_value: '',
+      planned_start_date: '',
+      planned_end_date: '',
+      status: 'planning',
+      default_labor_rate: '',
+      markup_percent: '10',
       notes: '',
     })
     setFormErrors([])
@@ -86,11 +99,18 @@ export default function Projects() {
     setEditingProject(project)
     setFormData({
       name: project.name || '',
-      client_name: project.client_name || '',
-      original_budget: project.original_budget || '',
-      start_date: project.start_date || '',
-      end_date: project.end_date || '',
-      status: project.status || 'active',
+      description: project.description || '',
+      project_type: project.project_type || 'commercial',
+      address: project.address || '',
+      city: project.city || '',
+      state: project.state || '',
+      budget: project.budget || '',
+      original_contract_value: project.original_contract_value || '',
+      planned_start_date: project.planned_start_date || '',
+      planned_end_date: project.planned_end_date || '',
+      status: project.status || 'planning',
+      default_labor_rate: project.default_labor_rate || '',
+      markup_percent: project.markup_percent || '10',
       notes: project.notes || '',
     })
     setFormErrors([])
@@ -117,19 +137,35 @@ export default function Projects() {
     e.preventDefault()
     setFormErrors([])
 
-    // Validate
-    const validation = validateProject(formData)
-    if (!validation.valid) {
-      setFormErrors(validation.errors)
+    if (!formData.name.trim()) {
+      setFormErrors(['Project name is required'])
       return
+    }
+
+    const saveData = {
+      name: formData.name.trim(),
+      description: formData.description.trim() || null,
+      project_type: formData.project_type,
+      address: formData.address.trim() || null,
+      city: formData.city.trim() || null,
+      state: formData.state.trim() || null,
+      budget: formData.budget ? parseFloat(formData.budget) : 0,
+      original_contract_value: formData.original_contract_value ? parseFloat(formData.original_contract_value) : 0,
+      current_contract_value: formData.original_contract_value ? parseFloat(formData.original_contract_value) : 0,
+      planned_start_date: formData.planned_start_date || null,
+      planned_end_date: formData.planned_end_date || null,
+      status: formData.status,
+      default_labor_rate: formData.default_labor_rate ? parseFloat(formData.default_labor_rate) : null,
+      markup_percent: formData.markup_percent ? parseFloat(formData.markup_percent) : 10,
+      notes: formData.notes.trim() || null,
     }
 
     setSaving(true)
     try {
       if (editingProject) {
-        await updateProject(editingProject.id, validation.value)
+        await updateProject(editingProject.id, saveData)
       } else {
-        await createProject(validation.value)
+        await createProject(saveData)
       }
       setIsModalOpen(false)
       await fetchProjects()
@@ -145,17 +181,24 @@ export default function Projects() {
   }
 
   const StatusBadge = ({ status }) => {
-    const config = {
-      active: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-      completed: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
-      'on-hold': { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
-      cancelled: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
+    const color = getProjectStatusColor(status)
+    const label = getProjectStatusLabel(status)
+    
+    const colorClasses = {
+      slate: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+      purple: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+      blue: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+      emerald: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      amber: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+      orange: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      cyan: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+      green: 'bg-green-500/20 text-green-400 border-green-500/30',
+      red: 'bg-red-500/20 text-red-400 border-red-500/30',
     }
-    const { bg, text, border } = config[status] || config.active
 
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${bg} ${text} ${border}`}>
-        {status?.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${colorClasses[color] || colorClasses.slate}`}>
+        {label}
       </span>
     )
   }
@@ -231,102 +274,107 @@ export default function Projects() {
                   <h3 className={`text-lg font-semibold mt-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
                     {project.name}
                   </h3>
-                  {project.client_name && (
-                    <p className={`text-sm ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
-                      {project.client_name}
+                  {project.city && project.state && (
+                    <p className={`text-sm flex items-center gap-1 ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
+                      <MapPin className="w-3 h-3" />
+                      {project.city}, {project.state}
                     </p>
                   )}
                 </div>
                 <StatusBadge status={project.status} />
               </div>
 
-              {/* Budget */}
+              {/* Project Type */}
+              {project.project_type && (
+                <p className={`text-xs mb-3 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+                  {PROJECT_TYPES.find(t => t.value === project.project_type)?.label || project.project_type}
+                </p>
+              )}
+
+              {/* Budget / Contract Value */}
               <div className={`p-3 rounded-xl mb-4 ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Budget</span>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Contract Value</span>
                   <span className={`font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                    {formatCurrency(project.original_budget)}
+                    {formatCurrency(project.original_contract_value || project.budget || 0)}
                   </span>
                 </div>
+                {project.percent_complete > 0 && (
+                  <div className="flex items-center gap-2">
+                    <div className={`flex-1 h-2 rounded-full ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}>
+                      <div 
+                        className="h-full rounded-full bg-emerald-500"
+                        style={{ width: `${project.percent_complete}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-medium ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
+                      {project.percent_complete}%
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Stats */}
-              {project.stats && (
-                <div className="grid grid-cols-3 gap-2 mb-4">
-                  <div className={`text-center p-2 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                    <p className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                      {project.stats.ticketCount}
-                    </p>
-                    <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Tickets</p>
+              {/* Dates */}
+              {(project.planned_start_date || project.planned_end_date) && (
+                <div className={`flex items-center gap-4 text-sm ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
+                  <div className="flex items-center gap-1">
+                    <Calendar className="w-4 h-4" />
+                    {project.planned_start_date 
+                      ? new Date(project.planned_start_date).toLocaleDateString() 
+                      : 'TBD'}
                   </div>
-                  <div className={`text-center p-2 rounded-lg ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
-                    <p className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                      {project.stats.coCount}
-                    </p>
-                    <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>COs</p>
-                  </div>
-                  <div className={`text-center p-2 rounded-lg ${darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
-                    <p className="text-lg font-bold text-emerald-500">
-                      {project.stats.coApproved}
-                    </p>
-                    <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Approved</p>
+                  <span>→</span>
+                  <div>
+                    {project.planned_end_date 
+                      ? new Date(project.planned_end_date).toLocaleDateString() 
+                      : 'TBD'}
                   </div>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-white/10">
-                <div className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-                  {project.start_date && `Started ${new Date(project.start_date).toLocaleDateString()}`}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleEdit(project); }}
-                    className={`p-2 rounded-lg transition-colors ${
-                      darkMode ? 'text-white/60 hover:bg-white/10' : 'text-slate-400 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  {project.stats?.ticketCount === 0 && project.stats?.coCount === 0 && (
-                    <button
-                      onClick={(e) => handleDelete(e, project.id)}
-                      disabled={deletingId === project.id}
-                      className={`p-2 rounded-lg transition-colors ${
-                        darkMode ? 'text-red-400 hover:bg-red-500/20' : 'text-red-500 hover:bg-red-50'
-                      } disabled:opacity-50`}
-                    >
-                      {deletingId === project.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
+              <div className={`flex items-center justify-end mt-4 pt-4 border-t ${
+                darkMode ? 'border-white/10' : 'border-slate-100'
+              }`}>
+                <button
+                  onClick={(e) => handleDelete(e, project.id)}
+                  disabled={deletingId === project.id}
+                  className={`p-2 rounded-lg transition-colors ${
+                    darkMode 
+                      ? 'text-red-400 hover:bg-red-500/20' 
+                      : 'text-red-500 hover:bg-red-50'
+                  } disabled:opacity-50`}
+                  title="Delete"
+                >
+                  {deletingId === project.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
                   )}
-                </div>
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Modal */}
       {isModalOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}
         >
-          <div className={`w-full max-w-lg rounded-2xl border shadow-2xl ${
-            darkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-200'
+          <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl ${
+            darkMode ? 'bg-slate-800' : 'bg-white'
           }`}>
-            {/* Header */}
+            {/* Modal Header */}
             <div className={`flex items-center justify-between p-4 border-b ${
               darkMode ? 'border-white/10' : 'border-slate-200'
             }`}>
-              <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
                 {editingProject ? 'Edit Project' : 'New Project'}
               </h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className={`p-2 rounded-lg transition-colors ${
                   darkMode ? 'hover:bg-white/10 text-white/60' : 'hover:bg-slate-100 text-slate-400'
@@ -336,129 +384,237 @@ export default function Projects() {
               </button>
             </div>
 
-            {/* Form */}
+            {/* Modal Form */}
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Project Name */}
               <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  PROJECT NAME *
+                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  Project Name *
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleChange('name', e.target.value)}
+                  placeholder="e.g., Downtown Office Tower"
                   className={inputStyles}
-                  placeholder="e.g., Lincoln Elementary Renovation"
                   required
                 />
               </div>
 
-              {/* Client Name */}
+              {/* Project Type & Status */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Project Type
+                  </label>
+                  <select
+                    value={formData.project_type}
+                    onChange={(e) => handleChange('project_type', e.target.value)}
+                    className={inputStyles}
+                  >
+                    {PROJECT_TYPES.map(type => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Status
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => handleChange('status', e.target.value)}
+                    className={inputStyles}
+                  >
+                    {PROJECT_STATUSES.map(status => (
+                      <option key={status.value} value={status.value}>{status.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Description */}
               <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  CLIENT NAME
+                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  Description
                 </label>
-                <input
-                  type="text"
-                  value={formData.client_name}
-                  onChange={(e) => handleChange('client_name', e.target.value)}
-                  className={inputStyles}
-                  placeholder="e.g., ABC School District"
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => handleChange('description', e.target.value)}
+                  placeholder="Project description..."
+                  rows={2}
+                  className={`${inputStyles} resize-none`}
                 />
               </div>
 
-              {/* Budget */}
-              <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  ORIGINAL BUDGET ($)
-                </label>
-                <div className="relative">
-                  <DollarSign className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
-                    darkMode ? 'text-white/30' : 'text-slate-400'
-                  }`} />
+              {/* Location */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-3 sm:col-span-1">
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => handleChange('address', e.target.value)}
+                    placeholder="123 Main St"
+                    className={inputStyles}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    City
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => handleChange('city', e.target.value)}
+                    placeholder="City"
+                    className={inputStyles}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    State
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.state}
+                    onChange={(e) => handleChange('state', e.target.value)}
+                    placeholder="CA"
+                    className={inputStyles}
+                  />
+                </div>
+              </div>
+
+              {/* Financials */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Contract Value
+                  </label>
+                  <div className="relative">
+                    <DollarSign className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                      darkMode ? 'text-white/30' : 'text-slate-400'
+                    }`} />
+                    <input
+                      type="number"
+                      value={formData.original_contract_value}
+                      onChange={(e) => handleChange('original_contract_value', e.target.value)}
+                      placeholder="0.00"
+                      className={`${inputStyles} pl-9`}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Budget
+                  </label>
+                  <div className="relative">
+                    <DollarSign className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                      darkMode ? 'text-white/30' : 'text-slate-400'
+                    }`} />
+                    <input
+                      type="number"
+                      value={formData.budget}
+                      onChange={(e) => handleChange('budget', e.target.value)}
+                      placeholder="0.00"
+                      className={`${inputStyles} pl-9`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Default Rates */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Default Labor Rate ($/hr)
+                  </label>
                   <input
                     type="number"
+                    value={formData.default_labor_rate}
+                    onChange={(e) => handleChange('default_labor_rate', e.target.value)}
+                    placeholder="65.00"
                     step="0.01"
-                    min="0"
-                    value={formData.original_budget}
-                    onChange={(e) => handleChange('original_budget', e.target.value)}
-                    className={`${inputStyles} pl-9`}
-                    placeholder="500000.00"
+                    className={inputStyles}
                   />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Default Markup %
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={formData.markup_percent}
+                      onChange={(e) => handleChange('markup_percent', e.target.value)}
+                      placeholder="10"
+                      className={`${inputStyles} pr-8`}
+                    />
+                    <Percent className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                      darkMode ? 'text-white/30' : 'text-slate-400'
+                    }`} />
+                  </div>
                 </div>
               </div>
 
               {/* Dates */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                    START DATE
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    Start Date
                   </label>
                   <input
                     type="date"
-                    value={formData.start_date}
-                    onChange={(e) => handleChange('start_date', e.target.value)}
+                    value={formData.planned_start_date}
+                    onChange={(e) => handleChange('planned_start_date', e.target.value)}
                     className={inputStyles}
                   />
                 </div>
                 <div>
-                  <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                    END DATE
+                  <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                    End Date
                   </label>
                   <input
                     type="date"
-                    value={formData.end_date}
-                    onChange={(e) => handleChange('end_date', e.target.value)}
+                    value={formData.planned_end_date}
+                    onChange={(e) => handleChange('planned_end_date', e.target.value)}
                     className={inputStyles}
                   />
                 </div>
               </div>
 
-              {/* Status */}
-              <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  STATUS
-                </label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => handleChange('status', e.target.value)}
-                  className={inputStyles}
-                >
-                  <option value="active">Active</option>
-                  <option value="on-hold">On Hold</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
-
               {/* Notes */}
               <div>
-                <label className={`text-xs font-medium ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                  NOTES
+                <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  Notes
                 </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => handleChange('notes', e.target.value)}
-                  rows={2}
-                  className={inputStyles}
                   placeholder="Additional notes..."
+                  rows={2}
+                  className={`${inputStyles} resize-none`}
                 />
               </div>
 
               {/* Errors */}
               {formErrors.length > 0 && (
                 <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                  {formErrors.map((err, idx) => (
-                    <p key={idx} className="text-red-400 text-sm flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {formErrors.map((err, i) => (
+                    <p key={i} className="text-red-400 text-sm flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
                       {err}
                     </p>
                   ))}
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-3 pt-4">
+              {/* Footer */}
+              <div className={`flex items-center justify-end gap-3 pt-4 border-t ${
+                darkMode ? 'border-white/10' : 'border-slate-200'
+              }`}>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
