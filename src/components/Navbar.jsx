@@ -1,4 +1,4 @@
-﻿import { Zap, Bell, User, Sun, Moon, LayoutDashboard, FileText, Clipboard, FileQuestion, Mic, Building2 } from 'lucide-react'
+﻿import { Zap, Bell, User, Sun, Moon, LayoutDashboard, FileText, Clipboard, FileQuestion, BarChart3, Mic, Building2 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar({ currentPage, setCurrentPage }) {
@@ -9,7 +9,7 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     { id: 'projects', label: 'Projects', icon: Building2 },
     { id: 'change-orders', label: 'Change Orders', icon: FileText },
     { id: 'daily-logs', label: 'Daily Logs', icon: Clipboard },
-    { id: 'rfis', label: 'RFIs', icon: FileQuestion },
+    { id: 'rfis', label: 'RFIs', icon: FileQuestion, BarChart3 },
     { id: 'capture', label: 'Capture', icon: Mic },
   ]
 
@@ -71,6 +71,7 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     </nav>
   )
 }
+
 
 
 
