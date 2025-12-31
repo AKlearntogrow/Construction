@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Capture from './pages/Capture'
 import ChangeOrders from './pages/ChangeOrders'
 import DailyLogs from './pages/DailyLogs'
+import RFIs from './pages/RFIs'
 import Projects from './pages/Projects'
 
 function AppContent() {
@@ -24,6 +25,7 @@ function AppContent() {
       {currentPage === 'change-orders' && <ChangeOrders />}
       {currentPage === 'projects' && <Projects />}
       {currentPage === 'daily-logs' && <DailyLogs />}
+      {currentPage === 'rfis' && <RFIs />}
     </div>
   )
 }
@@ -37,5 +39,6 @@ function App() {
 }
 
 export default App
+
 
 
