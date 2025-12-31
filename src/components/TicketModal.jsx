@@ -6,6 +6,7 @@ import { getGlobalCostCodes } from '../services/costCodeService'
 import { getTicketAttachments } from '../services/attachmentService'
 import FileUpload from './FileUpload'
 import AttachmentGallery from './AttachmentGallery'
+import SignatureSection from './SignatureSection'
 
 export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode }) {
   const [formData, setFormData] = useState({})
@@ -21,6 +22,7 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
   // Attachments state
   const [attachments, setAttachments] = useState([])
   const [loadingAttachments, setLoadingAttachments] = useState(false)
+  const [signatures, setSignatures] = useState({})
 
   // Load dropdown data on mount
   useEffect(() => {
@@ -74,6 +76,22 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
 
   const handleDeleteAttachment = (attachmentId) => {
     setAttachments(prev => prev.filter(a => a.id !== attachmentId))
+  }
+
+  const handleSign = async (role, signatureData) => {
+    const updatedSignatures = {
+      ...signatures,
+      [role]: signatureData
+    }
+    
+    try {
+      await updateTicket(ticket.id, { signatures: updatedSignatures })
+      setSignatures(updatedSignatures)
+      setHasChanges(true)
+    } catch (err) {
+      console.error('Failed to save signature:', err)
+      alert('Failed to save signature: ' + err.message)
+    }
   }
 
   if (!isOpen || !ticket) return null
@@ -352,6 +370,16 @@ export default function TicketModal({ ticket, isOpen, onClose, onSave, darkMode 
               ticketId={ticket.id}
               onUploadComplete={handleUploadComplete}
               disabled={false}
+            />
+          </div>
+
+          {/* Signatures Section */}
+          <div className={`p-4 rounded-xl border ${darkMode ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
+            <SignatureSection
+              signatures={signatures}
+              onSign={handleSign}
+              editable={true}
+              darkMode={darkMode}
             />
           </div>
 
