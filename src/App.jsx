@@ -23,6 +23,7 @@ function AppContent() {
       {currentPage === 'capture' && <Capture />}
       {currentPage === 'change-orders' && <ChangeOrders />}
       {currentPage === 'projects' && <Projects />}
+      {currentPage === 'daily-logs' && <DailyLogs />}
     </div>
   )
 }
@@ -36,4 +37,5 @@ function App() {
 }
 
 export default App
+
 

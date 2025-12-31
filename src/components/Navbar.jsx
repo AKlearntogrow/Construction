@@ -1,4 +1,4 @@
-import { Zap, Bell, User, Sun, Moon, LayoutDashboard, FileText, Mic, Building2 } from 'lucide-react'
+﻿import { Zap, Bell, User, Sun, Moon, LayoutDashboard, FileText, Clipboard, Mic, Building2 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
 export default function Navbar({ currentPage, setCurrentPage }) {
@@ -7,7 +7,7 @@ export default function Navbar({ currentPage, setCurrentPage }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: Building2 },
-    { id: 'change-orders', label: 'Change Orders', icon: FileText },
+    { id: 'change-orders', label: 'Change Orders', icon: FileText, Clipboard },
     { id: 'capture', label: 'Capture', icon: Mic },
   ]
 
@@ -69,3 +69,4 @@ export default function Navbar({ currentPage, setCurrentPage }) {
     </nav>
   )
 }
+
