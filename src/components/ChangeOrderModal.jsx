@@ -1,22 +1,23 @@
-import { useState, useEffect } from 'react'
-import { 
-  X, 
-  Save, 
-  Loader2, 
-  Plus, 
-  Trash2, 
-  Send, 
-  CheckCircle, 
+﻿import { useState, useEffect } from 'react'
+import {
+  X,
+  Save,
+  Loader2,
+  Plus,
+  Trash2,
+  Send,
+  CheckCircle,
   XCircle,
   FileText,
   AlertCircle,
   TrendingUp,
   TrendingDown,
-  Building2
+  Building2,
+  Download
 } from 'lucide-react'
-import { 
-  createChangeOrder, 
-  updateChangeOrder, 
+import {
+  createChangeOrder,
+  updateChangeOrder,
   getChangeOrderById,
   submitChangeOrder,
   approveChangeOrder,
@@ -26,17 +27,17 @@ import {
   getUnassignedTickets,
   calculateVariance
 } from '../services/changeOrderService'
+import { exportChangeOrderPDF } from '../services/pdfService'
 
-export default function ChangeOrderModal({ 
-  changeOrder, 
-  isOpen, 
-  onClose, 
-  onSave, 
-  darkMode, 
+export default function ChangeOrderModal({
+  changeOrder,
+  isOpen,
+  onClose,
+  onSave,
+  darkMode,
   projects = [],
-  defaultProjectId = null 
+  defaultProjectId = null
 }) {
-  // Form state
   const [formData, setFormData] = useState({
     title: '',
     project_id: '',
@@ -46,28 +47,26 @@ export default function ChangeOrderModal({
   const [unassignedTickets, setUnassignedTickets] = useState([])
   const [showAddTickets, setShowAddTickets] = useState(false)
   const [selectedTicketIds, setSelectedTicketIds] = useState([])
-  
-  // UI state
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [hasChanges, setHasChanges] = useState(false)
-  const [actionLoading, setActionLoading] = useState(null) // 'submit' | 'approve' | 'reject'
+  const [actionLoading, setActionLoading] = useState(null)
+  const [exportingPDF, setExportingPDF] = useState(false)
 
   const isNew = !changeOrder
   const isEditable = isNew || changeOrder?.status === 'draft'
 
-  // Load data when modal opens
   useEffect(() => {
     if (isOpen) {
       if (changeOrder) {
         loadChangeOrder()
       } else {
-        // Reset for new CO
-        setFormData({ 
-          title: '', 
-          project_id: defaultProjectId || '', 
-          notes: '' 
+        setFormData({
+          title: '',
+          project_id: defaultProjectId || '',
+          notes: ''
         })
         setTickets([])
         setHasChanges(false)
@@ -104,8 +103,7 @@ export default function ChangeOrderModal({
     }
   }
 
-  // Filter unassigned tickets by selected project
-  const filteredUnassignedTickets = formData.project_id 
+  const filteredUnassignedTickets = formData.project_id
     ? unassignedTickets.filter(t => t.project_id === formData.project_id)
     : unassignedTickets
 
@@ -114,8 +112,6 @@ export default function ChangeOrderModal({
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     setHasChanges(true)
-    
-    // Clear selected tickets if project changes
     if (field === 'project_id') {
       setSelectedTicketIds([])
     }
@@ -126,7 +122,6 @@ export default function ChangeOrderModal({
       setError('Title is required')
       return
     }
-
     if (!formData.project_id) {
       setError('Project is required')
       return
@@ -153,7 +148,7 @@ export default function ChangeOrderModal({
 
   const handleSubmit = async () => {
     if (!confirm('Submit this change order for approval? The original amount will be locked.')) return
-    
+
     setActionLoading('submit')
     try {
       await submitChangeOrder(changeOrder.id)
@@ -169,7 +164,7 @@ export default function ChangeOrderModal({
   const handleApprove = async () => {
     const approver = prompt('Enter approver name:')
     if (!approver) return
-    
+
     setActionLoading('approve')
     try {
       await approveChangeOrder(changeOrder.id, approver)
@@ -185,7 +180,7 @@ export default function ChangeOrderModal({
   const handleReject = async () => {
     const rejector = prompt('Enter your name:')
     if (!rejector) return
-    
+
     setActionLoading('reject')
     try {
       await rejectChangeOrder(changeOrder.id, rejector)
@@ -198,9 +193,22 @@ export default function ChangeOrderModal({
     }
   }
 
+  const handleExportPDF = async () => {
+    setExportingPDF(true)
+    try {
+      const project = projects.find(p => p.id === changeOrder.project_id)
+      await exportChangeOrderPDF(changeOrder, tickets, project)
+    } catch (err) {
+      console.error('Failed to export PDF:', err)
+      alert('Failed to export PDF: ' + err.message)
+    } finally {
+      setExportingPDF(false)
+    }
+  }
+
   const handleAddTickets = async () => {
     if (selectedTicketIds.length === 0) return
-    
+
     setSaving(true)
     try {
       const updated = await addTicketsToChangeOrder(changeOrder.id, selectedTicketIds)
@@ -218,7 +226,7 @@ export default function ChangeOrderModal({
 
   const handleRemoveTicket = async (ticketId) => {
     if (!confirm('Remove this ticket from the change order?')) return
-    
+
     try {
       const updated = await removeTicketFromChangeOrder(ticketId, changeOrder.id)
       setTickets(updated.tickets)
@@ -239,32 +247,30 @@ export default function ChangeOrderModal({
   }
 
   const toggleTicketSelection = (id) => {
-    setSelectedTicketIds(prev => 
+    setSelectedTicketIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     )
   }
 
-  // Get project name helper
   const getProjectName = (projectId) => {
     const project = projects.find(p => p.id === projectId)
     return project ? `${project.project_code} - ${project.name}` : 'Unknown Project'
   }
 
-  // Calculate totals
   const currentTotal = tickets.reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0)
-  const variance = changeOrder ? calculateVariance({ 
-    ...changeOrder, 
-    current_amount: currentTotal 
+  const variance = changeOrder ? calculateVariance({
+    ...changeOrder,
+    current_amount: currentTotal
   }) : null
 
   const inputStyles = `w-full px-3 py-2 rounded-lg border transition-colors ${
-    darkMode 
-      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+    darkMode
+      ? 'bg-slate-700 border-white/10 text-white focus:border-emerald-500/50'
       : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
   } outline-none`
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={handleBackdropClick}
     >
@@ -296,7 +302,7 @@ export default function ChangeOrderModal({
         ) : (
           <>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {/* Project Selection (Required) */}
+              {/* Project Selection */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${
                   darkMode ? 'text-white/60' : 'text-slate-600'
@@ -319,11 +325,6 @@ export default function ChangeOrderModal({
                     </option>
                   ))}
                 </select>
-                {!isNew && changeOrder?.project_id && (
-                  <p className={`text-xs mt-1 ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-                    Project cannot be changed after creation
-                  </p>
-                )}
               </div>
 
               {/* Title */}
@@ -360,7 +361,7 @@ export default function ChangeOrderModal({
                 />
               </div>
 
-              {/* Tickets Section (only for existing COs) */}
+              {/* Tickets Section */}
               {!isNew && (
                 <div className={`rounded-xl p-4 ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
                   <div className="flex items-center justify-between mb-3">
@@ -387,7 +388,7 @@ export default function ChangeOrderModal({
                       darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'
                     }`}>
                       <p className={`text-sm mb-2 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                        Select tickets to add (only showing tickets from this project):
+                        Select tickets to add:
                       </p>
                       {filteredUnassignedTickets.length === 0 ? (
                         <p className={`text-sm italic ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
@@ -396,7 +397,7 @@ export default function ChangeOrderModal({
                       ) : (
                         <div className="space-y-2 max-h-40 overflow-y-auto">
                           {filteredUnassignedTickets.map(ticket => (
-                            <label 
+                            <label
                               key={ticket.id}
                               className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${
                                 selectedTicketIds.includes(ticket.id)
@@ -414,9 +415,6 @@ export default function ChangeOrderModal({
                                 <p className={`text-sm truncate ${darkMode ? 'text-white' : 'text-slate-800'}`}>
                                   {ticket.description || 'No description'}
                                 </p>
-                                <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                                  {ticket.location || 'No location'}
-                                </p>
                               </div>
                               <span className="text-emerald-500 font-medium text-sm">
                                 ${parseFloat(ticket.total_amount || 0).toLocaleString()}
@@ -426,25 +424,14 @@ export default function ChangeOrderModal({
                         </div>
                       )}
                       {selectedTicketIds.length > 0 && (
-                        <>
-                          <div className={`my-2 pt-2 border-t ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                            <p className={`text-sm ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                              Selected: {selectedTicketIds.length} ticket(s)
-                            </p>
-                          </div>
-                          <button
-                            onClick={handleAddTickets}
-                            disabled={saving}
-                            className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                          >
-                            {saving ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Plus className="w-4 h-4" />
-                            )}
-                            Add Selected
-                          </button>
-                        </>
+                        <button
+                          onClick={handleAddTickets}
+                          disabled={saving}
+                          className="w-full mt-2 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                          Add Selected
+                        </button>
                       )}
                     </div>
                   )}
@@ -452,12 +439,12 @@ export default function ChangeOrderModal({
                   {/* Tickets List */}
                   {tickets.length === 0 ? (
                     <p className={`text-sm italic ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                      No tickets linked yet. Add tickets to calculate the total.
+                      No tickets linked yet.
                     </p>
                   ) : (
                     <div className="space-y-2">
                       {tickets.map(ticket => (
-                        <div 
+                        <div
                           key={ticket.id}
                           className={`flex items-center justify-between p-3 rounded-lg ${
                             darkMode ? 'bg-white/5' : 'bg-white'
@@ -468,7 +455,7 @@ export default function ChangeOrderModal({
                               {ticket.description || 'No description'}
                             </p>
                             <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                              {ticket.location || 'No location'} • {new Date(ticket.created_at).toLocaleDateString()}
+                              {ticket.location || 'No location'}
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
@@ -493,19 +480,14 @@ export default function ChangeOrderModal({
                 </div>
               )}
 
-              {/* Totals & Variance (only for existing COs) */}
+              {/* Totals */}
               {!isNew && (
-                <div className={`rounded-xl p-4 ${
-                  darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50'
-                }`}>
+                <div className={`rounded-xl p-4 ${darkMode ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                       <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Original</p>
                       <p className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
                         ${parseFloat(changeOrder.original_amount || 0).toLocaleString()}
-                      </p>
-                      <p className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-                        {parseFloat(changeOrder.original_amount) > 0 ? 'Locked' : 'Set on submit'}
                       </p>
                     </div>
                     <div>
@@ -513,49 +495,20 @@ export default function ChangeOrderModal({
                       <p className="text-lg font-bold text-emerald-500">
                         ${currentTotal.toLocaleString()}
                       </p>
-                      <p className={`text-xs ${darkMode ? 'text-white/30' : 'text-slate-400'}`}>
-                        {tickets.length} ticket(s)
-                      </p>
                     </div>
                     <div>
                       <p className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Variance</p>
                       {variance && parseFloat(changeOrder.original_amount) > 0 ? (
-                        <>
-                          <p className={`text-lg font-bold flex items-center justify-center gap-1 ${
-                            variance.isOverBudget ? 'text-red-400' : 'text-emerald-400'
-                          }`}>
-                            {variance.isOverBudget ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                            {variance.isOverBudget ? '+' : ''}${Math.abs(variance.amount).toLocaleString()}
-                          </p>
-                          <p className={`text-xs ${variance.isOverBudget ? 'text-red-400' : 'text-emerald-400'}`}>
-                            {variance.isOverBudget ? '+' : ''}{variance.percent}%
-                          </p>
-                        </>
+                        <p className={`text-lg font-bold flex items-center justify-center gap-1 ${
+                          variance.isOverBudget ? 'text-red-400' : 'text-emerald-400'
+                        }`}>
+                          {variance.isOverBudget ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                          {variance.isOverBudget ? '+' : ''}${Math.abs(variance.amount).toLocaleString()}
+                        </p>
                       ) : (
                         <p className={`text-lg font-bold ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>—</p>
                       )}
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Approval Info (for submitted/approved/rejected) */}
-              {!isNew && changeOrder.status !== 'draft' && (
-                <div className={`rounded-xl p-4 ${
-                  darkMode ? 'bg-white/5' : 'bg-slate-50'
-                }`}>
-                  <h4 className={`text-sm font-medium mb-2 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                    Approval History
-                  </h4>
-                  <div className={`text-sm ${darkMode ? 'text-white/80' : 'text-slate-700'}`}>
-                    {changeOrder.submitted_at && (
-                      <p>Submitted: {new Date(changeOrder.submitted_at).toLocaleString()}</p>
-                    )}
-                    {changeOrder.approved_at && (
-                      <p>
-                        {changeOrder.status === 'approved' ? 'Approved' : 'Rejected'} by {changeOrder.approved_by} on {new Date(changeOrder.approved_at).toLocaleString()}
-                      </p>
-                    )}
                   </div>
                 </div>
               )}
@@ -572,8 +525,8 @@ export default function ChangeOrderModal({
             </div>
 
             {/* Footer */}
-            <div className={`sticky bottom-0 flex items-center justify-between p-4 border-t ${
-              darkMode ? 'bg-slate-800 border-white/10' : 'bg-white border-slate-200'
+            <div className={`flex items-center justify-between p-4 border-t ${
+              darkMode ? 'border-white/10' : 'border-slate-200'
             }`}>
               <button
                 onClick={handleClose}
@@ -583,21 +536,37 @@ export default function ChangeOrderModal({
               >
                 {isEditable ? 'Cancel' : 'Close'}
               </button>
-              
+
               <div className="flex items-center gap-2">
-                {/* Action buttons based on status */}
+                {/* Export PDF button */}
+                {!isNew && tickets.length > 0 && (
+                  <button
+                    onClick={handleExportPDF}
+                    disabled={exportingPDF}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                      darkMode
+                        ? 'bg-white/10 text-white hover:bg-white/20'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    } disabled:opacity-50`}
+                  >
+                    {exportingPDF ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    Export PDF
+                  </button>
+                )}
+
+                {/* Submit/Approve/Reject buttons */}
                 {!isNew && changeOrder.status === 'draft' && tickets.length > 0 && (
                   <button
                     onClick={handleSubmit}
                     disabled={actionLoading === 'submit'}
-                    className="px-4 py-2 rounded-lg font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                    className="px-4 py-2 rounded-lg font-medium bg-blue-500 text-white hover:bg-blue-600 flex items-center gap-2 disabled:opacity-50"
                   >
-                    {actionLoading === 'submit' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                    Submit for Approval
+                    {actionLoading === 'submit' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Submit
                   </button>
                 )}
 
@@ -606,31 +575,23 @@ export default function ChangeOrderModal({
                     <button
                       onClick={handleReject}
                       disabled={actionLoading === 'reject'}
-                      className="px-4 py-2 rounded-lg font-medium bg-red-500 text-white hover:bg-red-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                      className="px-4 py-2 rounded-lg font-medium bg-red-500 text-white hover:bg-red-600 flex items-center gap-2 disabled:opacity-50"
                     >
-                      {actionLoading === 'reject' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <XCircle className="w-4 h-4" />
-                      )}
+                      {actionLoading === 'reject' ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                       Reject
                     </button>
                     <button
                       onClick={handleApprove}
                       disabled={actionLoading === 'approve'}
-                      className="px-4 py-2 rounded-lg font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center gap-2 disabled:opacity-50"
+                      className="px-4 py-2 rounded-lg font-medium bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-2 disabled:opacity-50"
                     >
-                      {actionLoading === 'approve' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4" />
-                      )}
+                      {actionLoading === 'approve' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                       Approve
                     </button>
                   </>
                 )}
 
-                {/* Save button (for new or draft) */}
+                {/* Save button */}
                 {isEditable && (
                   <button
                     onClick={handleSave}
@@ -644,15 +605,9 @@ export default function ChangeOrderModal({
                     }`}
                   >
                     {saving ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Saving...
-                      </>
+                      <><Loader2 className="w-4 h-4 animate-spin" />Saving...</>
                     ) : (
-                      <>
-                        <Save className="w-4 h-4" />
-                        {isNew ? 'Create' : 'Save Changes'}
-                      </>
+                      <><Save className="w-4 h-4" />{isNew ? 'Create' : 'Save'}</>
                     )}
                   </button>
                 )}
