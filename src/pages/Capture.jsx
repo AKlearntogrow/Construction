@@ -15,13 +15,15 @@ import {
   Trash2,
   DollarSign,
   Building2,
-  FolderPlus
+  FolderPlus,
+  Tag
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { createTicket } from '../services/ticketService'
 import { getActiveProjects } from '../services/projectService'
 import { getAllChangeOrders, createChangeOrder, addTicketsToChangeOrder } from '../services/changeOrderService'
 import { sanitizeCurrency, formatCurrency } from '../utils/validation'
+import CostCodeSelect from '../components/CostCodeSelect'
 import { CONSTRUCTION_TRADES, matchTrade, getTradeLabel } from '../data/trades'
 
 export default function Capture() {
@@ -32,6 +34,7 @@ export default function Capture() {
   const [transcript, setTranscript] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [extractedData, setExtractedData] = useState(null)
+  const [selectedCostCodeId, setSelectedCostCodeId] = useState(null)
   const [error, setError] = useState(null)
   
   // Save state
@@ -302,6 +305,7 @@ export default function Capture() {
       // Build ticket data
       const ticketData = {
         project_id: selectedProjectId,
+        cost_code_id: selectedCostCodeId,
         description: extractedData?.description || '',
         location: extractedData?.location || '',
         cost_code: extractedData?.cost_code_suggestion || '',
@@ -326,6 +330,7 @@ export default function Capture() {
         const newCO = await createChangeOrder({
           title: newCoTitle.trim(),
           project_id: selectedProjectId,
+        cost_code_id: selectedCostCodeId,
         })
         await addTicketsToChangeOrder(newCO.id, [savedTicket.id])
       }
@@ -404,7 +409,26 @@ export default function Capture() {
             ))}
           </select>
         )}
-      </div>
+      </div>      {/* Cost Code Selector */}
+      {selectedProjectId && (
+        <div className={`rounded-2xl border p-6 mb-6 ${
+          darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
+        }`}>
+          <div className="flex items-center gap-2 mb-4">
+            <Tag className="w-5 h-5 text-purple-500" />
+            <h2 className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+              Cost Code (Optional)
+            </h2>
+          </div>
+          <CostCodeSelect
+            value={selectedCostCodeId}
+            onChange={setSelectedCostCodeId}
+            projectId={selectedProjectId}
+            placeholder="Select a cost code..."
+          />
+        </div>
+      )}
+
 
       {/* Main capture area - only show if project selected */}
       {selectedProjectId && (
@@ -861,4 +885,6 @@ export default function Capture() {
     </main>
   )
 }
+
+
 
