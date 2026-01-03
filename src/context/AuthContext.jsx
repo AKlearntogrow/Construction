@@ -14,6 +14,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session?.user?.email || 'none')
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchUserProfile(session.user.id)
@@ -25,6 +26,7 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email || 'none')
         setUser(session?.user ?? null)
         if (session?.user) {
           await fetchUserProfile(session.user.id)
@@ -41,6 +43,8 @@ export function AuthProvider({ children }) {
 
   const fetchUserProfile = async (authId) => {
     try {
+      console.log('Fetching profile for authId:', authId)
+      
       // Get user profile
       const { data: profile, error: profileError } = await supabase
         .from('users')
@@ -48,11 +52,17 @@ export function AuthProvider({ children }) {
         .eq('auth_id', authId)
         .single()
 
-      if (profileError) throw profileError
+      if (profileError) {
+        console.error('Profile fetch error:', profileError)
+        throw profileError
+      }
+
+      console.log('Profile fetched:', profile?.email, 'company_id:', profile?.company_id)
       setUserProfile(profile)
 
       // Get company if user has one
       if (profile?.company_id) {
+        console.log('Fetching company:', profile.company_id)
         const { data: companyData, error: companyError } = await supabase
           .from('companies')
           .select('*')
@@ -60,12 +70,19 @@ export function AuthProvider({ children }) {
           .single()
 
         if (!companyError) {
+          console.log('Company fetched:', companyData?.name)
           setCompany(companyData)
+        } else {
+          console.error('Company fetch error:', companyError)
         }
+      } else {
+        console.log('No company_id, user needs onboarding')
+        setCompany(null)
       }
     } catch (error) {
       console.error('Error fetching user profile:', error)
     } finally {
+      console.log('Setting loading to false')
       setLoading(false)
     }
   }
@@ -75,7 +92,7 @@ export function AuthProvider({ children }) {
       email,
       password,
       options: {
-        data: metadata // first_name, last_name, etc.
+        data: metadata
       }
     })
     return { data, error }
@@ -109,6 +126,13 @@ export function AuthProvider({ children }) {
     signOut,
     isAuthenticated: !!user
   }
+
+  console.log('AuthContext state:', { 
+    isAuthenticated: !!user, 
+    hasProfile: !!userProfile, 
+    hasCompany: !!company, 
+    loading 
+  })
 
   return (
     <AuthContext.Provider value={value}>
