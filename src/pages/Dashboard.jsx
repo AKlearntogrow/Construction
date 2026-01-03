@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 import { waterfallData, changeOrders, projects, warnings } from '../data/mockData'
 import { getRecentTickets, getTicketStats, deleteTicket } from '../services/ticketService'
 import KPICard from '../components/KPICard'
@@ -13,33 +15,42 @@ import { FileText, Clock, DollarSign, CheckCircle, Loader2, Trash2, AlertCircle,
 
 export default function Dashboard() {
   const { darkMode } = useTheme()
-  
+  const { company, userProfile, loading: authLoading } = useAuth()
+  const navigate = useNavigate()
+
   // Real data state
   const [tickets, setTickets] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
-  
+
   // Modal state
   const [selectedTicket, setSelectedTicket] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
+  // Redirect to onboarding if no company
+  useEffect(() => {
+    if (!authLoading && userProfile && !company) {
+      navigate('/onboarding')
+    }
+  }, [authLoading, userProfile, company, navigate])
+
   // Fetch real data on component mount
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (company) {
+      fetchData()
+    }
+  }, [company])
 
   const fetchData = async () => {
     try {
       setLoading(true)
       setError(null)
-      
       const [ticketsData, statsData] = await Promise.all([
         getRecentTickets(10),
         getTicketStats()
       ])
-      
       setTickets(ticketsData)
       setStats(statsData)
     } catch (err) {
@@ -51,212 +62,179 @@ export default function Dashboard() {
   }
 
   const handleDeleteTicket = async (e, id) => {
-    e.stopPropagation() // Prevent row click from firing
+    e.stopPropagation()
     if (!confirm('Are you sure you want to delete this ticket?')) return
-    
+
     try {
       setDeletingId(id)
       await deleteTicket(id)
       await fetchData()
     } catch (err) {
       console.error('Failed to delete ticket:', err)
-      alert('Failed to delete ticket: ' + err.message)
+      alert('Failed to delete ticket')
     } finally {
       setDeletingId(null)
     }
   }
 
-  const handleRowClick = (ticket) => {
+  const handleTicketClick = (ticket) => {
     setSelectedTicket(ticket)
     setIsModalOpen(true)
   }
 
-  const handleModalClose = () => {
-    setIsModalOpen(false)
-    setSelectedTicket(null)
+  // Show loading if auth is still loading or no company yet
+  if (authLoading || (!company && userProfile)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+      </div>
+    )
   }
 
-  const handleTicketSaved = (updatedTicket) => {
-    // Refresh data after edit
-    fetchData()
-  }
-
-  // Build KPI data from real stats
-  const kpiData = [
-    {
-      title: 'Total T&M Tickets',
-      value: stats?.total || 0,
-      change: `${stats?.thisMonthCount || 0} this month`,
-      trend: 'up',
+  const kpiData = stats ? [
+    { 
+      title: 'Total T&M Tickets', 
+      value: stats.total.toString(), 
+      sub: `${stats.thisMonth} this month`,
       icon: FileText,
       color: 'blue'
     },
-    {
-      title: 'Pending Review',
-      value: stats?.pending || 0,
-      change: `$${(stats?.pendingValue || 0).toLocaleString()} value`,
-      trend: 'neutral',
+    { 
+      title: 'Pending Review', 
+      value: stats.byStatus.pending?.toString() || '0', 
+      sub: `$${((stats.byStatus.pendingValue || 0) / 1000).toFixed(0)}K value`,
       icon: Clock,
-      color: 'amber'
+      color: 'orange'
     },
-    {
-      title: 'Approved',
-      value: stats?.approved || 0,
-      change: `$${(stats?.approvedValue || 0).toLocaleString()} total`,
-      trend: 'up',
+    { 
+      title: 'Approved', 
+      value: stats.byStatus.approved?.toString() || '0', 
+      sub: `$${((stats.byStatus.approvedValue || 0) / 1000).toFixed(0)}K total`,
       icon: CheckCircle,
-      color: 'emerald'
+      color: 'green'
     },
-    {
-      title: 'Total Value',
-      value: `$${(stats?.totalValue || 0).toLocaleString()}`,
-      change: 'All tickets',
-      trend: 'up',
+    { 
+      title: 'Total Value', 
+      value: `$${(stats.totalValue / 1000).toFixed(0)}K`,
+      sub: 'All tickets',
       icon: DollarSign,
-      color: 'violet'
+      color: 'purple'
     }
-  ]
-
-  // Status badge component
-  const StatusBadge = ({ status }) => {
-    const styles = {
-      pending: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-      approved: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-      rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
-      submitted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    }
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium border ${styles[status] || styles.pending}`}>
-        {status?.charAt(0).toUpperCase() + status?.slice(1)}
-      </span>
-    )
-  }
+  ] : []
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>Dashboard</h1>
-        <p className={`mt-1 ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
+        <h1 className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          Dashboard
+        </h1>
+        <p className={`mt-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
           {stats?.total || 0} T&M tickets • Real-time insights
         </p>
       </div>
 
-      {/* Early Warning Alerts */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500" />
+          <p className="text-red-500">{error}</p>
+          <button onClick={fetchData} className="ml-auto text-red-500 hover:text-red-400">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Warning Alerts */}
       <WarningAlerts warnings={warnings} />
 
-      {/* KPI Cards - Now with real data */}
+      {/* KPI Cards */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[1,2,3,4].map(i => (
-            <div key={i} className={`rounded-2xl p-6 ${darkMode ? 'bg-white/10' : 'bg-white'} animate-pulse`}>
-              <div className="h-4 bg-gray-300 rounded w-1/2 mb-4"></div>
-              <div className="h-8 bg-gray-300 rounded w-1/3"></div>
-            </div>
-          ))}
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {kpiData.map((kpi, idx) => (
-            <KPICard key={idx} {...kpi} />
+          {kpiData.map((kpi, index) => (
+            <KPICard key={index} {...kpi} />
           ))}
         </div>
       )}
 
-      {/* Value at Risk Dashboard */}
-      <div className="mb-8">
-        <ValueAtRisk darkMode={darkMode} />
-      </div>
+      {/* Value at Risk */}
+      <ValueAtRisk />
 
-      {/* Recent T&M Tickets - NEW SECTION with real data */}
-      <div className={`rounded-2xl border p-6 mb-8 ${
-        darkMode ? 'bg-white/10 border-white/20' : 'bg-white border-slate-200'
+      {/* Recent T&M Tickets */}
+      <div className={`rounded-2xl p-6 mb-8 ${
+        darkMode ? 'bg-white/5 border border-white/10' : 'bg-white border border-slate-200 shadow-sm'
       }`}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-            Recent T&M Tickets
-          </h2>
-          <button 
-            onClick={fetchData}
-            className={`text-sm px-3 py-1 rounded-lg transition-colors ${
-              darkMode ? 'text-white/60 hover:bg-white/10' : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            Refresh
-          </button>
-        </div>
-
+        <h2 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+          Recent T&M Tickets
+        </h2>
+        
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-          </div>
-        ) : error ? (
-          <div className="flex items-center justify-center py-12 text-red-400">
-            <AlertCircle className="w-5 h-5 mr-2" />
-            {error}
+          <div className="flex justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
           </div>
         ) : tickets.length === 0 ? (
-          <div className={`text-center py-12 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-            <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No T&M tickets yet</p>
-            <p className="text-sm mt-1">Create your first ticket from the Capture page</p>
-          </div>
+          <p className={`text-center py-8 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+            No tickets yet. Create your first T&M ticket!
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className={`text-left text-sm border-b ${
-                  darkMode ? 'text-white/40 border-white/10' : 'text-slate-400 border-slate-200'
-                }`}>
+                <tr className={`text-left text-sm ${darkMode ? 'text-white/40' : 'text-slate-500'}`}>
+                  <th className="pb-3 font-medium">Ticket #</th>
+                  <th className="pb-3 font-medium">Project</th>
                   <th className="pb-3 font-medium">Description</th>
-                  <th className="pb-3 font-medium">Location</th>
                   <th className="pb-3 font-medium">Amount</th>
                   <th className="pb-3 font-medium">Status</th>
                   <th className="pb-3 font-medium">Date</th>
-                  <th className="pb-3 font-medium">Actions</th>
+                  <th className="pb-3 font-medium"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={`text-sm ${darkMode ? 'text-white/80' : 'text-slate-700'}`}>
                 {tickets.map((ticket) => (
                   <tr 
                     key={ticket.id} 
-                    onClick={() => handleRowClick(ticket)}
-                    className={`border-b transition-colors cursor-pointer ${
-                      darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-100 hover:bg-slate-50'
+                    onClick={() => handleTicketClick(ticket)}
+                    className={`border-t cursor-pointer transition-colors ${
+                      darkMode 
+                        ? 'border-white/5 hover:bg-white/5' 
+                        : 'border-slate-100 hover:bg-slate-50'
                     }`}
                   >
-                    <td className={`py-4 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                      <div className="flex items-center gap-2">
-                        <Edit3 className={`w-3.5 h-3.5 ${darkMode ? 'text-white/30' : 'text-slate-300'}`} />
-                        <span>
-                          {ticket.description?.substring(0, 40) || 'No description'}
-                          {ticket.description?.length > 40 ? '...' : ''}
-                        </span>
-                      </div>
+                    <td className="py-3 font-mono text-amber-500">{ticket.ticket_number}</td>
+                    <td className="py-3">{ticket.projects?.name || 'Unknown'}</td>
+                    <td className="py-3 max-w-xs truncate">{ticket.description}</td>
+                    <td className="py-3 font-semibold">
+                      ${(ticket.total_amount || 0).toLocaleString()}
                     </td>
-                    <td className={`py-4 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
-                      {ticket.location || '—'}
+                    <td className="py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        ticket.status === 'approved' 
+                          ? 'bg-green-500/20 text-green-500'
+                          : ticket.status === 'pending'
+                          ? 'bg-amber-500/20 text-amber-500'
+                          : ticket.status === 'rejected'
+                          ? 'bg-red-500/20 text-red-500'
+                          : 'bg-slate-500/20 text-slate-500'
+                      }`}>
+                        {ticket.status}
+                      </span>
                     </td>
-                    <td className="py-4 text-emerald-500 font-medium">
-                      ${parseFloat(ticket.total_amount || 0).toLocaleString()}
+                    <td className="py-3 text-slate-500">
+                      {new Date(ticket.work_date).toLocaleDateString()}
                     </td>
-                    <td className="py-4">
-                      <StatusBadge status={ticket.status} />
-                    </td>
-                    <td className={`py-4 text-sm ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
-                      {new Date(ticket.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-4">
+                    <td className="py-3">
                       <button
                         onClick={(e) => handleDeleteTicket(e, ticket.id)}
                         disabled={deletingId === ticket.id}
-                        className={`p-2 rounded-lg transition-colors ${
-                          darkMode 
-                            ? 'text-red-400 hover:bg-red-500/20' 
-                            : 'text-red-500 hover:bg-red-50'
-                        } disabled:opacity-50`}
-                        title="Delete ticket"
+                        className={`p-1 rounded transition-colors ${
+                          darkMode
+                            ? 'hover:bg-red-500/20 text-white/40 hover:text-red-500'
+                            : 'hover:bg-red-50 text-slate-400 hover:text-red-500'
+                        }`}
                       >
                         {deletingId === ticket.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -273,26 +251,20 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Two Column Layout - Keep existing mock components */}
-      <div className="grid lg:grid-cols-3 gap-6 mb-8">
-        <div className="lg:col-span-2">
-          <ChangeOrdersTable changeOrders={changeOrders} />
-        </div>
-        <div>
-          <ProjectHealth projects={projects} />
-        </div>
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <ProjectHealth projects={projects} />
+        <BudgetChart data={waterfallData} />
       </div>
 
-      {/* Budget Chart */}
-      <BudgetChart data={waterfallData} />
-
-      {/* Ticket Edit Modal */}
+      {/* Ticket Modal */}
       <TicketModal
         ticket={selectedTicket}
         isOpen={isModalOpen}
-        onClose={handleModalClose}
-        onSave={handleTicketSaved}
-        darkMode={darkMode}
+        onClose={() => {
+          setIsModalOpen(false)
+          setSelectedTicket(null)
+        }}
       />
     </main>
   )
