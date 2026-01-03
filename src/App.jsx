@@ -12,6 +12,7 @@ import Reports from './pages/Reports'
 import Projects from './pages/Projects'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import Onboarding from './pages/Onboarding'
 
 function AppLayout({ children }) {
   const { darkMode } = useTheme()
@@ -28,10 +29,22 @@ function AppLayout({ children }) {
   )
 }
 
+// Wrapper that checks for company and redirects to onboarding if needed
+function RequireCompany({ children }) {
+  const { company, loading } = useAuth()
+  
+  if (loading) return null
+  
+  if (!company) {
+    return <Navigate to="/onboarding" replace />
+  }
+  
+  return children
+}
+
 function AppRoutes() {
   const { isAuthenticated, loading } = useAuth()
 
-  // Don't render routes until auth state is determined
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
@@ -53,44 +66,65 @@ function AppRoutes() {
         isAuthenticated ? <Navigate to="/" replace /> : <Signup />
       } />
 
-      {/* Protected routes */}
+      {/* Onboarding - requires auth but not company */}
+      <Route path="/onboarding" element={
+        <ProtectedRoute>
+          <Onboarding />
+        </ProtectedRoute>
+      } />
+
+      {/* Protected routes - require auth AND company */}
       <Route path="/" element={
         <ProtectedRoute>
-          <AppLayout><Dashboard /></AppLayout>
+          <RequireCompany>
+            <AppLayout><Dashboard /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/capture" element={
         <ProtectedRoute>
-          <AppLayout><Capture /></AppLayout>
+          <RequireCompany>
+            <AppLayout><Capture /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/change-orders" element={
         <ProtectedRoute>
-          <AppLayout><ChangeOrders /></AppLayout>
+          <RequireCompany>
+            <AppLayout><ChangeOrders /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/projects" element={
         <ProtectedRoute>
-          <AppLayout><Projects /></AppLayout>
+          <RequireCompany>
+            <AppLayout><Projects /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/daily-logs" element={
         <ProtectedRoute>
-          <AppLayout><DailyLogs /></AppLayout>
+          <RequireCompany>
+            <AppLayout><DailyLogs /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/rfis" element={
         <ProtectedRoute>
-          <AppLayout><RFIs /></AppLayout>
+          <RequireCompany>
+            <AppLayout><RFIs /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
       <Route path="/reports" element={
         <ProtectedRoute>
-          <AppLayout><Reports /></AppLayout>
+          <RequireCompany>
+            <AppLayout><Reports /></AppLayout>
+          </RequireCompany>
         </ProtectedRoute>
       } />
 
-      {/* Catch all - redirect to dashboard */}
+      {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
