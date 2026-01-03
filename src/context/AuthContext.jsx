@@ -11,10 +11,63 @@ export function AuthProvider({ children }) {
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const fetchUserProfile = async (authId) => {
+    try {
+      // Get user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('auth_id', authId)
+        .maybeSingle()
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError)
+        setUserProfile(null)
+        setCompany(null)
+        return
+      }
+
+      if (!profile) {
+        console.log('No profile found for auth_id:', authId)
+        setUserProfile(null)
+        setCompany(null)
+        return
+      }
+
+      setUserProfile(profile)
+
+      // Get company if user has one
+      if (profile.company_id) {
+        const { data: companyData, error: companyError } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('id', profile.company_id)
+          .maybeSingle()
+
+        if (!companyError && companyData) {
+          setCompany(companyData)
+        } else {
+          setCompany(null)
+        }
+      } else {
+        setCompany(null)
+      }
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error)
+      setUserProfile(null)
+      setCompany(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
+    let mounted = true
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Initial session:', session?.user?.email || 'none')
+      if (!mounted) return
+      
       setUser(session?.user ?? null)
       if (session?.user) {
         fetchUserProfile(session.user.id)
@@ -26,7 +79,8 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email || 'none')
+        if (!mounted) return
+        
         setUser(session?.user ?? null)
         if (session?.user) {
           await fetchUserProfile(session.user.id)
@@ -38,54 +92,11 @@ export function AuthProvider({ children }) {
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const fetchUserProfile = async (authId) => {
-    try {
-      console.log('Fetching profile for authId:', authId)
-      
-      // Get user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('auth_id', authId)
-        .single()
-
-      if (profileError) {
-        console.error('Profile fetch error:', profileError)
-        throw profileError
-      }
-
-      console.log('Profile fetched:', profile?.email, 'company_id:', profile?.company_id)
-      setUserProfile(profile)
-
-      // Get company if user has one
-      if (profile?.company_id) {
-        console.log('Fetching company:', profile.company_id)
-        const { data: companyData, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', profile.company_id)
-          .single()
-
-        if (!companyError) {
-          console.log('Company fetched:', companyData?.name)
-          setCompany(companyData)
-        } else {
-          console.error('Company fetch error:', companyError)
-        }
-      } else {
-        console.log('No company_id, user needs onboarding')
-        setCompany(null)
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error)
-    } finally {
-      console.log('Setting loading to false')
-      setLoading(false)
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
     }
-  }
+  }, [])
 
   const signUp = async (email, password, metadata = {}) => {
     const { data, error } = await supabase.auth.signUp({
@@ -126,13 +137,6 @@ export function AuthProvider({ children }) {
     signOut,
     isAuthenticated: !!user
   }
-
-  console.log('AuthContext state:', { 
-    isAuthenticated: !!user, 
-    hasProfile: !!userProfile, 
-    hasCompany: !!company, 
-    loading 
-  })
 
   return (
     <AuthContext.Provider value={value}>
