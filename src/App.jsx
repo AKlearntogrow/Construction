@@ -31,12 +31,19 @@ function AppLayout({ children }) {
 
 // Wrapper that checks for company and redirects to onboarding if needed
 function RequireCompany({ children }) {
-  const { company, loading } = useAuth()
+  const { userProfile, company, loading } = useAuth()
   
+  // Still loading - show nothing
   if (loading) return null
   
-  if (!company) {
+  // User profile loaded but no company - redirect to onboarding
+  if (userProfile && !company) {
     return <Navigate to="/onboarding" replace />
+  }
+  
+  // Edge case: no profile yet (shouldn't happen after loading=false, but safety check)
+  if (!userProfile) {
+    return null
   }
   
   return children
