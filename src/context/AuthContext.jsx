@@ -127,20 +127,26 @@ export function AuthProvider({ children }) {
 
     initAuth()
 
+    let lastUserId = null
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('onAuthStateChange:', event, session?.user?.email || 'no session')
         if (!mounted) return
         
+        const currentUserId = session?.user?.id
         setUser(session?.user ?? null)
         
         if (session?.user) {
-          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          // Only fetch profile if user changed or it's initial session
+          if (event === 'INITIAL_SESSION' || (event === 'SIGNED_IN' && currentUserId !== lastUserId)) {
+            lastUserId = currentUserId
             await fetchUserProfile(session.user.id)
-          } else if (event === 'TOKEN_REFRESHED') {
+          } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            // Skip repeated SIGNED_IN for same user
             setLoading(false)
           }
         } else {
+          lastUserId = null
           setUserProfile(null)
           setCompany(null)
           setLoading(false)
@@ -199,4 +205,5 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   )
 }
+
 
