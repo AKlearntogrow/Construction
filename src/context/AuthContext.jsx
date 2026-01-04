@@ -20,8 +20,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   const fetchUserProfile = useCallback(async (authId) => {
-    console.log('fetchUserProfile called with authId:', authId)
-    
+        
     try {
       const profileQuery = supabase
         .from('users')
@@ -33,18 +32,15 @@ export function AuthProvider({ children }) {
         'Profile fetch timeout'
       )
 
-      console.log('Profile fetch result:', { profile, profileError })
-
+      
       if (profileError) {
-        console.error('Profile fetch error:', profileError)
-        setUserProfile(null)
+                setUserProfile(null)
         setCompany(null)
         return
       }
 
       if (!profile) {
-        console.log('No profile found for auth_id:', authId)
-        setUserProfile(null)
+                setUserProfile(null)
         setCompany(null)
         return
       }
@@ -52,8 +48,7 @@ export function AuthProvider({ children }) {
       setUserProfile(profile)
 
       if (profile.company_id) {
-        console.log('Fetching company:', profile.company_id)
-        
+                
         const companyQuery = supabase
           .from('companies')
           .select('*')
@@ -64,31 +59,26 @@ export function AuthProvider({ children }) {
           'Company fetch timeout'
         )
 
-        console.log('Company fetch result:', { companyData, companyError })
-
+        
         if (!companyError && companyData) {
           setCompany(companyData)
         } else {
           setCompany(null)
         }
       } else {
-        console.log('No company_id on profile')
-        setCompany(null)
+                setCompany(null)
       }
     } catch (error) {
-      console.error('Error in fetchUserProfile:', error.message)
-      setUserProfile(null)
+            setUserProfile(null)
       setCompany(null)
     } finally {
-      console.log('Setting loading = false')
-      setLoading(false)
+            setLoading(false)
     }
   }, [])
 
   const refreshUser = useCallback(async () => {
     if (user?.id) {
-      console.log('refreshUser called')
-      setLoading(true)
+            setLoading(true)
       await fetchUserProfile(user.id)
     }
   }, [user?.id, fetchUserProfile])
@@ -98,14 +88,12 @@ export function AuthProvider({ children }) {
 
     const initAuth = async () => {
       try {
-        console.log('initAuth: calling getSession...')
-        
+                
         const { data: { session } } = await withTimeout(supabase.auth.getSession(), 10000,
           'getSession timeout'
         )
         
-        console.log('getSession result:', session?.user?.email || 'no session')
-        
+                
         if (!mounted) return
         
         setUser(session?.user ?? null)
@@ -115,8 +103,7 @@ export function AuthProvider({ children }) {
           setLoading(false)
         }
       } catch (error) {
-        console.error('initAuth error:', error.message)
-        if (mounted) {
+                if (mounted) {
           setUser(null)
           setUserProfile(null)
           setCompany(null)
@@ -130,8 +117,7 @@ export function AuthProvider({ children }) {
     let lastUserId = null
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('onAuthStateChange:', event, session?.user?.email || 'no session')
-        if (!mounted) return
+                if (!mounted) return
         
         const currentUserId = session?.user?.id
         setUser(session?.user ?? null)
@@ -205,5 +191,6 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   )
 }
+
 
 
