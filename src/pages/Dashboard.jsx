@@ -6,6 +6,7 @@ import { waterfallData, changeOrders, projects, warnings } from '../data/mockDat
 import { getRecentTickets, getTicketStats, deleteTicket } from '../services/ticketService'
 import KPICard from '../components/KPICard'
 import WarningAlerts from '../components/WarningAlerts'
+import GettingStarted from '../components/GettingStarted'
 import ChangeOrdersTable from '../components/ChangeOrdersTable'
 import ProjectHealth from '../components/ProjectHealth'
 import BudgetChart from '../components/BudgetChart'
@@ -144,6 +145,9 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Getting Started */}
+      <GettingStarted />
+
       {/* Warning Alerts */}
       <WarningAlerts warnings={warnings} />
 
@@ -269,5 +273,6 @@ export default function Dashboard() {
     </main>
   )
 }
+
 
 
