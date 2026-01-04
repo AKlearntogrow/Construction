@@ -45,6 +45,12 @@ export default function Onboarding() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    
+    if (!userProfile?.id) {
+      setError('Please wait for your profile to load and try again')
+      return
+    }
+    
     setLoading(true)
 
     try {
@@ -77,7 +83,7 @@ export default function Onboarding() {
           company_id: newCompany.id,
           role: 'admin'
         })
-        .eq('id', userProfile.id)
+        .eq('id', userProfile?.id)
 
       if (userError) throw userError
 
@@ -341,4 +347,6 @@ export default function Onboarding() {
     </div>
   )
 }
+
+
 

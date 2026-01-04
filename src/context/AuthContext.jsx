@@ -29,9 +29,7 @@ export function AuthProvider({ children }) {
         .eq('auth_id', authId)
         .maybeSingle()
       
-      const { data: profile, error: profileError } = await withTimeout(
-        profileQuery,
-        5000,
+      const { data: profile, error: profileError } = await withTimeout(profileQuery, 10000,
         'Profile fetch timeout'
       )
 
@@ -62,9 +60,7 @@ export function AuthProvider({ children }) {
           .eq('id', profile.company_id)
           .maybeSingle()
         
-        const { data: companyData, error: companyError } = await withTimeout(
-          companyQuery,
-          5000,
+        const { data: companyData, error: companyError } = await withTimeout(companyQuery, 10000,
           'Company fetch timeout'
         )
 
@@ -104,9 +100,7 @@ export function AuthProvider({ children }) {
       try {
         console.log('initAuth: calling getSession...')
         
-        const { data: { session } } = await withTimeout(
-          supabase.auth.getSession(),
-          5000,
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 10000,
           'getSession timeout'
         )
         
@@ -205,3 +199,4 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   )
 }
+
