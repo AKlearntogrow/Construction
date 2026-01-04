@@ -173,7 +173,7 @@ export default function Onboarding() {
                   } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                 >
                   <option value="gc">General Contractor</option>
-                  <option value="sub">Subcontractor</option>
+                  <option value="subcontractor">Subcontractor</option>
                   <option value="owner">Owner / Developer</option>
                   <option value="architect">Architect / Engineer</option>
                 </select>
@@ -341,3 +341,4 @@ export default function Onboarding() {
     </div>
   )
 }
+
