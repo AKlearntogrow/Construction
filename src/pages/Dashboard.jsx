@@ -95,21 +95,21 @@ export default function Dashboard() {
     { 
       title: 'Total T&M Tickets', 
       value: stats.total.toString(), 
-      sub: `${stats.thisMonth} this month`,
+      sub: `${stats.thisMonthCount} this month`,
       icon: FileText,
       color: 'blue'
     },
     { 
       title: 'Pending Review', 
-      value: stats.byStatus.pending?.toString() || '0', 
-      sub: `$${((stats.byStatus.pendingValue || 0) / 1000).toFixed(0)}K value`,
+      value: (stats.pending || 0).toString(), 
+      sub: `$${((stats.pendingValue || 0) / 1000).toFixed(0)}K value`,
       icon: Clock,
       color: 'orange'
     },
     { 
       title: 'Approved', 
-      value: stats.byStatus.approved?.toString() || '0', 
-      sub: `$${((stats.byStatus.approvedValue || 0) / 1000).toFixed(0)}K total`,
+      value: (stats.approved || 0).toString(), 
+      sub: `$${((stats.approvedValue || 0) / 1000).toFixed(0)}K total`,
       icon: CheckCircle,
       color: 'green'
     },
@@ -269,3 +269,5 @@ export default function Dashboard() {
     </main>
   )
 }
+
+
