@@ -27,7 +27,6 @@ export function AuthProvider({ children }) {
         console.error('Profile fetch error:', profileError)
         setUserProfile(null)
         setCompany(null)
-        setLoading(false)
         return
       }
 
@@ -35,7 +34,6 @@ export function AuthProvider({ children }) {
         console.log('No profile found for auth_id:', authId)
         setUserProfile(null)
         setCompany(null)
-        setLoading(false)
         return
       }
 
@@ -65,7 +63,6 @@ export function AuthProvider({ children }) {
       setUserProfile(null)
       setCompany(null)
     } finally {
-      console.log('fetchUserProfile complete, setting loading=false')
       setLoading(false)
     }
   }, [])
@@ -73,48 +70,65 @@ export function AuthProvider({ children }) {
   const refreshUser = useCallback(async () => {
     if (user?.id) {
       console.log('refreshUser called')
+      setLoading(true)
       await fetchUserProfile(user.id)
     }
   }, [user?.id, fetchUserProfile])
 
   useEffect(() => {
     let mounted = true
-    let timeoutId = null
 
-    // Safety timeout - if loading takes more than 10 seconds, something is wrong
-    timeoutId = setTimeout(() => {
-      if (mounted && loading) {
-        console.error('Auth loading timeout - forcing loading=false')
-        setLoading(false)
+    const initAuth = async () => {
+      try {
+        console.log('initAuth: calling getSession...')
+        
+        // Add timeout to getSession
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('getSession timeout')), 5000)
+        )
+        
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
+        
+        console.log('getSession result:', session?.user?.email || 'no session')
+        
+        if (!mounted) return
+        
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          await fetchUserProfile(session.user.id)
+        } else {
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('initAuth error:', error.message)
+        // If getSession fails/times out, clear any corrupt data and reset
+        if (mounted) {
+          setUser(null)
+          setUserProfile(null)
+          setCompany(null)
+          setLoading(false)
+        }
       }
-    }, 10000)
+    }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('getSession result:', session?.user?.email || 'no session')
-      if (!mounted) return
-      
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchUserProfile(session.user.id)
-      } else {
-        setLoading(false)
-      }
-    })
+    initAuth()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('onAuthStateChange:', event, session?.user?.email || 'no session')
         if (!mounted) return
         
-        // Skip redundant fetches on TOKEN_REFRESHED if we already have data
-        if (event === 'TOKEN_REFRESHED' && userProfile && company) {
-          console.log('Skipping fetch on TOKEN_REFRESHED - already have data')
-          return
-        }
-        
         setUser(session?.user ?? null)
+        
         if (session?.user) {
-          await fetchUserProfile(session.user.id)
+          // Only fetch profile on SIGNED_IN, not on every token refresh
+          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            await fetchUserProfile(session.user.id)
+          } else if (event === 'TOKEN_REFRESHED') {
+            // Just ensure loading is false, don't refetch
+            setLoading(false)
+          }
         } else {
           setUserProfile(null)
           setCompany(null)
@@ -125,7 +139,6 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false
-      if (timeoutId) clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [fetchUserProfile])
