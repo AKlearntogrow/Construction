@@ -223,3 +223,102 @@ export function getProjectStatusLabel(status) {
 }
 
 
+
+// ============================================================================
+// JOIN PROJECT (for subcontractors)
+// ============================================================================
+
+/**
+ * Join a project by project code
+ * @param {string} projectCode - The project code to join (e.g., PRJ-26-ABC123)
+ * @returns {object} - The project team membership
+ */
+export async function joinProjectByCode(projectCode) {
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  // Get user profile with company
+  const { data: profile } = await supabase
+    .from('users')
+    .select('id, company_id')
+    .eq('auth_id', user.id)
+    .single()
+  
+  if (!profile) throw new Error('User profile not found')
+
+  // Find project by code
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('id, name, project_code, gc_company_id')
+    .eq('project_code', projectCode.toUpperCase().trim())
+    .single()
+
+  if (projectError || !project) {
+    throw new Error('Project not found. Please check the code and try again.')
+  }
+
+  // Check if already a member
+  const { data: existing } = await supabase
+    .from('project_team')
+    .select('id')
+    .eq('project_id', project.id)
+    .eq('user_id', profile.id)
+    .maybeSingle()
+
+  if (existing) {
+    throw new Error('You are already a member of this project.')
+  }
+
+  // Add user to project team
+  const { data: membership, error: memberError } = await supabase
+    .from('project_team')
+    .insert({
+      project_id: project.id,
+      user_id: profile.id,
+      company_id: profile.company_id,
+      project_role: 'subcontractor',
+      status: 'active'
+    })
+    .select()
+    .single()
+
+  if (memberError) throw memberError
+
+  return { membership, project }
+}
+
+/**
+ * Get projects the user is a member of (as subcontractor)
+ */
+export async function getJoinedProjects() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: profile } = await supabase
+    .from('users')
+    .select('id')
+    .eq('auth_id', user.id)
+    .single()
+
+  if (!profile) return []
+
+  const { data, error } = await supabase
+    .from('project_team')
+    .select(`
+      id,
+      project_role,
+      status,
+      project:project_id(
+        id,
+        project_code,
+        name,
+        status,
+        gc_company:gc_company_id(name)
+      )
+    `)
+    .eq('user_id', profile.id)
+
+  if (error) throw error
+  return data || []
+}

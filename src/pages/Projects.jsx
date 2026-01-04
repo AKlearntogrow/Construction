@@ -1,39 +1,43 @@
 ﻿import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
-import { 
-  getAllProjects, 
-  createProject, 
+import { useAuth } from '../context/AuthContext'
+import {
+  getAllProjects,
+  createProject,
   updateProject,
   deleteProject,
+  joinProjectByCode,
   PROJECT_TYPES,
   PROJECT_STATUSES,
   getProjectStatusColor,
   getProjectStatusLabel
 } from '../services/projectService'
 import { formatCurrency } from '../utils/validation'
-import { 
-  Plus, 
-  Loader2, 
-  Building2, 
-  AlertCircle, 
-  Trash2, 
+import {
+  Plus,
+  Loader2,
+  Building2,
+  AlertCircle,
+  Trash2,
   X,
   Save,
   DollarSign,
   Calendar,
   MapPin,
-  Percent
+  Percent,
+  UserPlus
 } from 'lucide-react'
 
 export default function Projects() {
   const { darkMode } = useTheme()
-  
+  const { company } = useAuth()
+
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [deletingId, setDeletingId] = useState(null)
-  
-  // Modal state
+
+  // Create/Edit modal state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProject, setEditingProject] = useState(null)
   const [formData, setFormData] = useState({
@@ -55,6 +59,12 @@ export default function Projects() {
   const [formErrors, setFormErrors] = useState([])
   const [saving, setSaving] = useState(false)
 
+  // Join project modal state
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
+  const [joinError, setJoinError] = useState('')
+  const [joining, setJoining] = useState(false)
+
   useEffect(() => {
     fetchProjects()
   }, [])
@@ -70,6 +80,29 @@ export default function Projects() {
       setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleJoinProject = async (e) => {
+    e.preventDefault()
+    setJoinError('')
+    
+    if (!joinCode.trim()) {
+      setJoinError('Please enter a project code')
+      return
+    }
+
+    setJoining(true)
+    try {
+      const { project } = await joinProjectByCode(joinCode)
+      setIsJoinModalOpen(false)
+      setJoinCode('')
+      await fetchProjects()
+      alert('Successfully joined project: ' + project.name)
+    } catch (err) {
+      setJoinError(err.message)
+    } finally {
+      setJoining(false)
     }
   }
 
@@ -120,7 +153,7 @@ export default function Projects() {
   const handleDelete = async (e, id) => {
     e.stopPropagation()
     if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) return
-    
+
     try {
       setDeletingId(id)
       await deleteProject(id)
@@ -183,7 +216,7 @@ export default function Projects() {
   const StatusBadge = ({ status }) => {
     const color = getProjectStatusColor(status)
     const label = getProjectStatusLabel(status)
-    
+
     const colorClasses = {
       slate: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
       purple: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
@@ -204,8 +237,8 @@ export default function Projects() {
   }
 
   const inputStyles = `w-full px-3 py-2 rounded-lg border transition-colors ${
-    darkMode 
-      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50' 
+    darkMode
+      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50'
       : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
   } outline-none`
 
@@ -221,13 +254,28 @@ export default function Projects() {
             {projects.length} project{projects.length !== 1 ? 's' : ''} • Manage your construction projects
           </p>
         </div>
-        <button
-          onClick={handleCreateNew}
-          className="px-4 py-2 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          New Project
-        </button>
+        <div className="flex items-center gap-3">
+          {company?.company_type === 'subcontractor' && (
+            <button
+              onClick={() => setIsJoinModalOpen(true)}
+              className={`px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 ${
+                darkMode 
+                  ? 'bg-white/10 text-white hover:bg-white/20' 
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <UserPlus className="w-5 h-5" />
+              Join Project
+            </button>
+          )}
+          <button
+            onClick={handleCreateNew}
+            className="px-4 py-2 rounded-xl font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            New Project
+          </button>
+        </div>
       </div>
 
       {/* Projects Grid */}
@@ -259,13 +307,12 @@ export default function Projects() {
             <div
               key={project.id}
               className={`rounded-2xl border p-6 transition-all hover:shadow-lg cursor-pointer ${
-                darkMode 
-                  ? 'bg-white/10 border-white/20 hover:bg-white/15' 
+                darkMode
+                  ? 'bg-white/10 border-white/20 hover:bg-white/15'
                   : 'bg-white border-slate-200 hover:shadow-slate-200'
               }`}
               onClick={() => handleEdit(project)}
             >
-              {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <p className={`text-xs font-mono ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
@@ -284,14 +331,12 @@ export default function Projects() {
                 <StatusBadge status={project.status} />
               </div>
 
-              {/* Project Type */}
               {project.project_type && (
                 <p className={`text-xs mb-3 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
                   {PROJECT_TYPES.find(t => t.value === project.project_type)?.label || project.project_type}
                 </p>
               )}
 
-              {/* Budget / Contract Value */}
               <div className={`p-3 rounded-xl mb-4 ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>Contract Value</span>
@@ -302,7 +347,7 @@ export default function Projects() {
                 {project.percent_complete > 0 && (
                   <div className="flex items-center gap-2">
                     <div className={`flex-1 h-2 rounded-full ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}>
-                      <div 
+                      <div
                         className="h-full rounded-full bg-emerald-500"
                         style={{ width: `${project.percent_complete}%` }}
                       />
@@ -314,25 +359,23 @@ export default function Projects() {
                 )}
               </div>
 
-              {/* Dates */}
               {(project.planned_start_date || project.planned_end_date) && (
                 <div className={`flex items-center gap-4 text-sm ${darkMode ? 'text-white/50' : 'text-slate-500'}`}>
                   <div className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
-                    {project.planned_start_date 
-                      ? new Date(project.planned_start_date).toLocaleDateString() 
+                    {project.planned_start_date
+                      ? new Date(project.planned_start_date).toLocaleDateString()
                       : 'TBD'}
                   </div>
                   <span>→</span>
                   <div>
-                    {project.planned_end_date 
-                      ? new Date(project.planned_end_date).toLocaleDateString() 
+                    {project.planned_end_date
+                      ? new Date(project.planned_end_date).toLocaleDateString()
                       : 'TBD'}
                   </div>
                 </div>
               )}
 
-              {/* Actions */}
               <div className={`flex items-center justify-end mt-4 pt-4 border-t ${
                 darkMode ? 'border-white/10' : 'border-slate-100'
               }`}>
@@ -340,8 +383,8 @@ export default function Projects() {
                   onClick={(e) => handleDelete(e, project.id)}
                   disabled={deletingId === project.id}
                   className={`p-2 rounded-lg transition-colors ${
-                    darkMode 
-                      ? 'text-red-400 hover:bg-red-500/20' 
+                    darkMode
+                      ? 'text-red-400 hover:bg-red-500/20'
                       : 'text-red-500 hover:bg-red-50'
                   } disabled:opacity-50`}
                   title="Delete"
@@ -358,16 +401,15 @@ export default function Projects() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
           onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}
         >
           <div className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl ${
             darkMode ? 'bg-slate-800' : 'bg-white'
           }`}>
-            {/* Modal Header */}
             <div className={`flex items-center justify-between p-4 border-b ${
               darkMode ? 'border-white/10' : 'border-slate-200'
             }`}>
@@ -384,9 +426,7 @@ export default function Projects() {
               </button>
             </div>
 
-            {/* Modal Form */}
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
-              {/* Project Name */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
                   Project Name *
@@ -401,7 +441,6 @@ export default function Projects() {
                 />
               </div>
 
-              {/* Project Type & Status */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
@@ -433,7 +472,6 @@ export default function Projects() {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
                   Description
@@ -447,7 +485,6 @@ export default function Projects() {
                 />
               </div>
 
-              {/* Location */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-3 sm:col-span-1">
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
@@ -487,7 +524,6 @@ export default function Projects() {
                 </div>
               </div>
 
-              {/* Financials */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
@@ -525,7 +561,6 @@ export default function Projects() {
                 </div>
               </div>
 
-              {/* Default Rates */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
@@ -559,7 +594,6 @@ export default function Projects() {
                 </div>
               </div>
 
-              {/* Dates */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
@@ -585,7 +619,6 @@ export default function Projects() {
                 </div>
               </div>
 
-              {/* Notes */}
               <div>
                 <label className={`block text-sm font-medium mb-1 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
                   Notes
@@ -599,7 +632,6 @@ export default function Projects() {
                 />
               </div>
 
-              {/* Errors */}
               {formErrors.length > 0 && (
                 <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                   {formErrors.map((err, i) => (
@@ -611,7 +643,6 @@ export default function Projects() {
                 </div>
               )}
 
-              {/* Footer */}
               <div className={`flex items-center justify-end gap-3 pt-4 border-t ${
                 darkMode ? 'border-white/10' : 'border-slate-200'
               }`}>
@@ -638,6 +669,95 @@ export default function Projects() {
                     <>
                       <Save className="w-4 h-4" />
                       {editingProject ? 'Save Changes' : 'Create Project'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Join Project Modal */}
+      {isJoinModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => e.target === e.currentTarget && setIsJoinModalOpen(false)}
+        >
+          <div className={`w-full max-w-md rounded-2xl ${
+            darkMode ? 'bg-slate-800' : 'bg-white'
+          }`}>
+            <div className={`flex items-center justify-between p-4 border-b ${
+              darkMode ? 'border-white/10' : 'border-slate-200'
+            }`}>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                Join a Project
+              </h2>
+              <button
+                onClick={() => setIsJoinModalOpen(false)}
+                className={`p-2 rounded-lg transition-colors ${
+                  darkMode ? 'hover:bg-white/10 text-white/60' : 'hover:bg-slate-100 text-slate-400'
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleJoinProject} className="p-4 space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-white/60' : 'text-slate-600'}`}>
+                  Project Code
+                </label>
+                <input
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="e.g., PRJ-26-ABC123"
+                  className={`w-full px-4 py-3 rounded-lg border transition-colors font-mono ${
+                    darkMode
+                      ? 'bg-white/5 border-white/10 text-white focus:border-emerald-500/50'
+                      : 'bg-white border-slate-200 text-slate-800 focus:border-emerald-500'
+                  } outline-none`}
+                  autoFocus
+                />
+                <p className={`text-xs mt-2 ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
+                  Enter the project code shared by the general contractor
+                </p>
+              </div>
+
+              {joinError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                  <p className="text-red-400 text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    {joinError}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsJoinModalOpen(false)}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    darkMode ? 'text-white/60 hover:bg-white/10' : 'text-slate-500 hover:bg-slate-100'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={joining || !joinCode.trim()}
+                  className="flex-1 px-4 py-2 rounded-lg font-medium bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:from-emerald-600 hover:to-teal-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {joining ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Joining...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      Join Project
                     </>
                   )}
                 </button>
