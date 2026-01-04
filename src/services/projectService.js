@@ -247,16 +247,15 @@ export async function joinProjectByCode(projectCode) {
   
   if (!profile) throw new Error('User profile not found')
 
-  // Find project by code
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('id, name, project_code, gc_company_id')
-    .eq('project_code', projectCode.toUpperCase().trim())
-    .single()
+  // Find project by code using RPC function (bypasses RLS)
+  const { data: projects, error: projectError } = await supabase
+    .rpc('lookup_project_by_code', { p_code: projectCode })
 
-  if (projectError || !project) {
+  if (projectError || !projects || projects.length === 0) {
     throw new Error('Project not found. Please check the code and try again.')
   }
+
+  const project = projects[0]
 
   // Check if already a member
   const { data: existing } = await supabase
@@ -322,3 +321,4 @@ export async function getJoinedProjects() {
   if (error) throw error
   return data || []
 }
+
