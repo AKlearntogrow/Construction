@@ -5,6 +5,14 @@ const AuthContext = createContext({})
 
 export const useAuth = () => useContext(AuthContext)
 
+// Helper to add timeout to promises
+const withTimeout = (promise, ms, errorMsg) => {
+  const timeout = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error(errorMsg)), ms)
+  )
+  return Promise.race([promise, timeout])
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userProfile, setUserProfile] = useState(null)
@@ -15,11 +23,17 @@ export function AuthProvider({ children }) {
     console.log('fetchUserProfile called with authId:', authId)
     
     try {
-      const { data: profile, error: profileError } = await supabase
+      const profileQuery = supabase
         .from('users')
         .select('*')
         .eq('auth_id', authId)
         .maybeSingle()
+      
+      const { data: profile, error: profileError } = await withTimeout(
+        profileQuery,
+        5000,
+        'Profile fetch timeout'
+      )
 
       console.log('Profile fetch result:', { profile, profileError })
 
@@ -41,11 +55,18 @@ export function AuthProvider({ children }) {
 
       if (profile.company_id) {
         console.log('Fetching company:', profile.company_id)
-        const { data: companyData, error: companyError } = await supabase
+        
+        const companyQuery = supabase
           .from('companies')
           .select('*')
           .eq('id', profile.company_id)
           .maybeSingle()
+        
+        const { data: companyData, error: companyError } = await withTimeout(
+          companyQuery,
+          5000,
+          'Company fetch timeout'
+        )
 
         console.log('Company fetch result:', { companyData, companyError })
 
@@ -59,10 +80,11 @@ export function AuthProvider({ children }) {
         setCompany(null)
       }
     } catch (error) {
-      console.error('Error in fetchUserProfile:', error)
+      console.error('Error in fetchUserProfile:', error.message)
       setUserProfile(null)
       setCompany(null)
     } finally {
+      console.log('Setting loading = false')
       setLoading(false)
     }
   }, [])
@@ -82,13 +104,11 @@ export function AuthProvider({ children }) {
       try {
         console.log('initAuth: calling getSession...')
         
-        // Add timeout to getSession
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('getSession timeout')), 5000)
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          'getSession timeout'
         )
-        
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise])
         
         console.log('getSession result:', session?.user?.email || 'no session')
         
@@ -102,7 +122,6 @@ export function AuthProvider({ children }) {
         }
       } catch (error) {
         console.error('initAuth error:', error.message)
-        // If getSession fails/times out, clear any corrupt data and reset
         if (mounted) {
           setUser(null)
           setUserProfile(null)
@@ -122,11 +141,9 @@ export function AuthProvider({ children }) {
         setUser(session?.user ?? null)
         
         if (session?.user) {
-          // Only fetch profile on SIGNED_IN, not on every token refresh
           if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
             await fetchUserProfile(session.user.id)
           } else if (event === 'TOKEN_REFRESHED') {
-            // Just ensure loading is false, don't refetch
             setLoading(false)
           }
         } else {
