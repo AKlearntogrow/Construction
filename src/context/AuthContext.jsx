@@ -65,6 +65,7 @@ export function AuthProvider({ children }) {
       setUserProfile(null)
       setCompany(null)
     } finally {
+      console.log('fetchUserProfile complete, setting loading=false')
       setLoading(false)
     }
   }, [])
@@ -78,6 +79,15 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true
+    let timeoutId = null
+
+    // Safety timeout - if loading takes more than 10 seconds, something is wrong
+    timeoutId = setTimeout(() => {
+      if (mounted && loading) {
+        console.error('Auth loading timeout - forcing loading=false')
+        setLoading(false)
+      }
+    }, 10000)
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('getSession result:', session?.user?.email || 'no session')
@@ -96,6 +106,12 @@ export function AuthProvider({ children }) {
         console.log('onAuthStateChange:', event, session?.user?.email || 'no session')
         if (!mounted) return
         
+        // Skip redundant fetches on TOKEN_REFRESHED if we already have data
+        if (event === 'TOKEN_REFRESHED' && userProfile && company) {
+          console.log('Skipping fetch on TOKEN_REFRESHED - already have data')
+          return
+        }
+        
         setUser(session?.user ?? null)
         if (session?.user) {
           await fetchUserProfile(session.user.id)
@@ -109,6 +125,7 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false
+      if (timeoutId) clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [fetchUserProfile])
