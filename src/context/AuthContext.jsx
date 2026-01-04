@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useEffect, useState } from 'react'
+﻿import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext({})
@@ -11,19 +11,23 @@ export function AuthProvider({ children }) {
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchUserProfile = async (authId) => {
+  const fetchUserProfile = useCallback(async (authId) => {
+    console.log('fetchUserProfile called with authId:', authId)
+    
     try {
-      // Get user profile
       const { data: profile, error: profileError } = await supabase
         .from('users')
         .select('*')
         .eq('auth_id', authId)
         .maybeSingle()
 
+      console.log('Profile fetch result:', { profile, profileError })
+
       if (profileError) {
         console.error('Profile fetch error:', profileError)
         setUserProfile(null)
         setCompany(null)
+        setLoading(false)
         return
       }
 
@@ -31,18 +35,21 @@ export function AuthProvider({ children }) {
         console.log('No profile found for auth_id:', authId)
         setUserProfile(null)
         setCompany(null)
+        setLoading(false)
         return
       }
 
       setUserProfile(profile)
 
-      // Get company if user has one
       if (profile.company_id) {
+        console.log('Fetching company:', profile.company_id)
         const { data: companyData, error: companyError } = await supabase
           .from('companies')
           .select('*')
           .eq('id', profile.company_id)
           .maybeSingle()
+
+        console.log('Company fetch result:', { companyData, companyError })
 
         if (!companyError && companyData) {
           setCompany(companyData)
@@ -50,6 +57,7 @@ export function AuthProvider({ children }) {
           setCompany(null)
         }
       } else {
+        console.log('No company_id on profile')
         setCompany(null)
       }
     } catch (error) {
@@ -59,13 +67,20 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const refreshUser = useCallback(async () => {
+    if (user?.id) {
+      console.log('refreshUser called')
+      await fetchUserProfile(user.id)
+    }
+  }, [user?.id, fetchUserProfile])
 
   useEffect(() => {
     let mounted = true
 
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('getSession result:', session?.user?.email || 'no session')
       if (!mounted) return
       
       setUser(session?.user ?? null)
@@ -76,9 +91,9 @@ export function AuthProvider({ children }) {
       }
     })
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('onAuthStateChange:', event, session?.user?.email || 'no session')
         if (!mounted) return
         
         setUser(session?.user ?? null)
@@ -96,15 +111,13 @@ export function AuthProvider({ children }) {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [fetchUserProfile])
 
   const signUp = async (email, password, metadata = {}) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: metadata
-      }
+      options: { data: metadata }
     })
     return { data, error }
   }
@@ -135,6 +148,7 @@ export function AuthProvider({ children }) {
     signUp,
     signIn,
     signOut,
+    refreshUser,
     isAuthenticated: !!user
   }
 

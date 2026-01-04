@@ -6,14 +6,14 @@ import { supabase } from '../lib/supabase'
 import { Building2, Loader2, HardHat, ArrowRight, MapPin, Phone, Mail } from 'lucide-react'
 
 export default function Onboarding() {
-  const { userProfile, company } = useAuth()
+  const { userProfile, company, refreshUser } = useAuth()
   const { darkMode } = useTheme()
   const navigate = useNavigate()
-  
+
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  
+
   const [formData, setFormData] = useState({
     name: '',
     company_type: 'gc',
@@ -25,7 +25,6 @@ export default function Onboarding() {
     email: ''
   })
 
-  // If user already has a company, redirect to dashboard
   useEffect(() => {
     if (company) {
       navigate('/')
@@ -49,7 +48,6 @@ export default function Onboarding() {
     setLoading(true)
 
     try {
-      // Create the company
       const { data: newCompany, error: companyError } = await supabase
         .from('companies')
         .insert({
@@ -73,10 +71,9 @@ export default function Onboarding() {
 
       if (companyError) throw companyError
 
-      // Link user to the new company and make them admin
       const { error: userError } = await supabase
         .from('users')
-        .update({ 
+        .update({
           company_id: newCompany.id,
           role: 'admin'
         })
@@ -84,9 +81,10 @@ export default function Onboarding() {
 
       if (userError) throw userError
 
-      // Refresh the page to reload auth context with new company
-      window.location.href = '/'
-      
+      // Refresh auth context then navigate
+      await refreshUser()
+      navigate('/')
+
     } catch (err) {
       console.error('Onboarding error:', err)
       setError(err.message || 'Failed to create company')
@@ -94,7 +92,6 @@ export default function Onboarding() {
     }
   }
 
-  // Don't render form if user has company (will redirect via useEffect)
   if (company) {
     return null
   }
@@ -106,7 +103,6 @@ export default function Onboarding() {
       <div className={`w-full max-w-lg p-8 rounded-2xl shadow-xl ${
         darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'
       }`}>
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 mb-4">
             <HardHat className="w-8 h-8 text-white" />
@@ -119,14 +115,12 @@ export default function Onboarding() {
           </p>
         </div>
 
-        {/* Progress */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className={`w-3 h-3 rounded-full ${step >= 1 ? 'bg-emerald-500' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
           <div className={`w-8 h-0.5 ${step >= 2 ? 'bg-emerald-500' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
           <div className={`w-3 h-3 rounded-full ${step >= 2 ? 'bg-emerald-500' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
             <p className="text-red-500 text-sm">{error}</p>
@@ -153,8 +147,8 @@ export default function Onboarding() {
                     onChange={handleChange}
                     required
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
+                      darkMode
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
                     } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                     placeholder="Acme Construction LLC"
@@ -173,8 +167,8 @@ export default function Onboarding() {
                   value={formData.company_type}
                   onChange={handleChange}
                   className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                    darkMode 
-                      ? 'bg-slate-700 border-slate-600 text-white focus:border-emerald-500' 
+                    darkMode
+                      ? 'bg-slate-700 border-slate-600 text-white focus:border-emerald-500'
                       : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
                   } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                 >
@@ -214,8 +208,8 @@ export default function Onboarding() {
                     value={formData.address}
                     onChange={handleChange}
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
+                      darkMode
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
                     } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                     placeholder="123 Main Street"
@@ -224,48 +218,42 @@ export default function Onboarding() {
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-1">
-                  <input
-                    type="text"
-                    name="city"
-                    value={formData.city}
-                    onChange={handleChange}
-                    placeholder="City"
-                    className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
-                    } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
-                  />
-                </div>
-                <div className="col-span-1">
-                  <input
-                    type="text"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleChange}
-                    placeholder="State"
-                    className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
-                    } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
-                  />
-                </div>
-                <div className="col-span-1">
-                  <input
-                    type="text"
-                    name="zip"
-                    value={formData.zip}
-                    onChange={handleChange}
-                    placeholder="ZIP"
-                    className={`w-full px-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
-                        : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
-                    } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
-                  />
-                </div>
+                <input
+                  type="text"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  placeholder="City"
+                  className={`w-full px-4 py-3 rounded-lg border transition-colors ${
+                    darkMode
+                      ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
+                      : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
+                  } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
+                />
+                <input
+                  type="text"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleChange}
+                  placeholder="State"
+                  className={`w-full px-4 py-3 rounded-lg border transition-colors ${
+                    darkMode
+                      ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
+                      : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
+                  } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
+                />
+                <input
+                  type="text"
+                  name="zip"
+                  value={formData.zip}
+                  onChange={handleChange}
+                  placeholder="ZIP"
+                  className={`w-full px-4 py-3 rounded-lg border transition-colors ${
+                    darkMode
+                      ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
+                      : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
+                  } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
+                />
               </div>
 
               <div>
@@ -284,8 +272,8 @@ export default function Onboarding() {
                     value={formData.phone}
                     onChange={handleChange}
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
+                      darkMode
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
                     } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                     placeholder="(555) 123-4567"
@@ -309,8 +297,8 @@ export default function Onboarding() {
                     value={formData.email}
                     onChange={handleChange}
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
-                      darkMode 
-                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500' 
+                      darkMode
+                        ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-emerald-500'
                         : 'bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-emerald-500'
                     } focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
                     placeholder="info@company.com"
@@ -323,8 +311,8 @@ export default function Onboarding() {
                   type="button"
                   onClick={() => setStep(1)}
                   className={`flex-1 py-3 px-4 rounded-lg font-semibold transition-all ${
-                    darkMode 
-                      ? 'bg-slate-700 text-white hover:bg-slate-600' 
+                    darkMode
+                      ? 'bg-slate-700 text-white hover:bg-slate-600'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
@@ -346,7 +334,6 @@ export default function Onboarding() {
           )}
         </form>
 
-        {/* Skip option */}
         <p className={`mt-6 text-center text-sm ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
           You can update these details later in settings
         </p>
