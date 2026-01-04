@@ -68,6 +68,22 @@ export async function createProject(projectData) {
     projectData.project_code = await generateProjectCode()
   }
 
+  // Get current user's company if not provided
+  if (!projectData.gc_company_id) {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('auth_id', user.id)
+        .single()
+      
+      if (profile?.company_id) {
+        projectData.gc_company_id = profile.company_id
+      }
+    }
+  }
+
   const { data, error } = await supabase
     .from('projects')
     .insert([projectData])
@@ -205,3 +221,4 @@ export function getProjectStatusLabel(status) {
   const found = PROJECT_STATUSES.find(s => s.value === status)
   return found?.label || status
 }
+
