@@ -122,27 +122,12 @@ export async function deleteProject(id) {
   return true
 }
 
-/**
- * Generate unique project code
- */
 async function generateProjectCode() {
   const year = new Date().getFullYear().toString().slice(-2)
-  
-  const { data } = await supabase
-    .from('projects')
-    .select('project_code')
-    .like('project_code', `PRJ-${year}-%`)
-    .order('project_code', { ascending: false })
-    .limit(1)
-
-  let nextNum = 1
-  if (data && data.length > 0) {
-    const lastCode = data[0].project_code
-    const lastNum = parseInt(lastCode.split('-')[2], 10)
-    nextNum = lastNum + 1
-  }
-
-  return `PRJ-${year}-${String(nextNum).padStart(4, '0')}`
+  // Use timestamp + random for guaranteed uniqueness
+  const timestamp = Date.now().toString(36).toUpperCase()
+  const random = Math.random().toString(36).substring(2, 4).toUpperCase()
+  return `PRJ-${year}-${timestamp}${random}`
 }
 
 /**
@@ -321,4 +306,5 @@ export async function getJoinedProjects() {
   if (error) throw error
   return data || []
 }
+
 
