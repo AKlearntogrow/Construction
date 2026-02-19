@@ -1,14 +1,15 @@
 ﻿import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { getActiveProjects } from '../services/projectService'
-import { 
-  getRFIsByProject, 
-  createRFI, 
+import {
+  getRFIsByProject,
+  createRFI,
   updateRFI,
   respondToRFI,
   RFI_STATUSES,
-  RFI_PRIORITIES 
+  RFI_PRIORITIES
 } from '../services/rfiService'
+import { parseLocalDate } from '../utils/validation'
 import { 
   Plus, 
   Loader2, 
@@ -335,7 +336,7 @@ export default function RFIs() {
                     <div className={`flex items-center gap-4 mt-3 text-xs ${darkMode ? 'text-white/40' : 'text-slate-400'}`}>
                       {rfi.drawing_number && <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{rfi.drawing_number}</span>}
                       {rfi.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{rfi.location}</span>}
-                      {rfi.date_required && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Due: {new Date(rfi.date_required).toLocaleDateString()}</span>}
+                      {rfi.date_required && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Due: {parseLocalDate(rfi.date_required).toLocaleDateString()}</span>}
                     </div>
 
                     {/* Impact warnings */}

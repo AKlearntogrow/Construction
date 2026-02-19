@@ -13,6 +13,7 @@ import BudgetChart from '../components/BudgetChart'
 import TicketModal from '../components/TicketModal'
 import ValueAtRisk from '../components/ValueAtRisk'
 import { FileText, Clock, DollarSign, CheckCircle, Loader2, Trash2, AlertCircle, Edit3 } from 'lucide-react'
+import { parseLocalDate } from '../utils/validation'
 
 export default function Dashboard() {
   const { darkMode } = useTheme()
@@ -228,7 +229,7 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td className="py-3 text-slate-500">
-                      {new Date(ticket.work_date).toLocaleDateString()}
+                      {parseLocalDate(ticket.work_date).toLocaleDateString()}
                     </td>
                     <td className="py-3">
                       <button

@@ -12,7 +12,7 @@ import {
   getProjectStatusColor,
   getProjectStatusLabel
 } from '../services/projectService'
-import { formatCurrency } from '../utils/validation'
+import { formatCurrency, parseLocalDate } from '../utils/validation'
 import {
   Plus,
   Loader2,
@@ -364,13 +364,13 @@ export default function Projects() {
                   <div className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
                     {project.planned_start_date
-                      ? new Date(project.planned_start_date).toLocaleDateString()
+                      ? parseLocalDate(project.planned_start_date).toLocaleDateString()
                       : 'TBD'}
                   </div>
                   <span>→</span>
                   <div>
                     {project.planned_end_date
-                      ? new Date(project.planned_end_date).toLocaleDateString()
+                      ? parseLocalDate(project.planned_end_date).toLocaleDateString()
                       : 'TBD'}
                   </div>
                 </div>

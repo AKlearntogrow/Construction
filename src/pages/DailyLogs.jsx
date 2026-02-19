@@ -1,12 +1,13 @@
 ﻿import { useState, useEffect } from 'react'
 import { useTheme } from '../context/ThemeContext'
 import { getActiveProjects } from '../services/projectService'
-import { 
-  getDailyLogsByProject, 
-  createDailyLog, 
+import {
+  getDailyLogsByProject,
+  createDailyLog,
   updateDailyLog,
-  WEATHER_CONDITIONS 
+  WEATHER_CONDITIONS
 } from '../services/dailyLogService'
+import { parseLocalDate } from '../utils/validation'
 import { CONSTRUCTION_TRADES } from '../data/trades'
 import { supabase } from '../lib/supabase'
 import { 
@@ -331,7 +332,7 @@ export default function DailyLogs() {
                   </div>
                   <div>
                     <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                      {new Date(log.log_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      {parseLocalDate(log.log_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                     </h3>
                     <div className={`flex items-center gap-4 mt-1 text-sm ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>
                       <span className="flex items-center gap-1">

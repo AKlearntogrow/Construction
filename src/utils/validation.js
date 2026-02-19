@@ -486,6 +486,26 @@ export function validateChangeOrder(co) {
 }
 
 // ============================================
+// DATE HELPERS
+// ============================================
+
+/**
+ * Parse a date-only string (YYYY-MM-DD) as a local date.
+ *
+ * new Date("2025-01-15") is parsed as UTC midnight, which displays as
+ * the previous day (Jan 14) in timezones west of UTC.  Appending
+ * T00:00:00 forces the constructor to treat it as local time.
+ *
+ * Full ISO timestamps (containing "T") are passed through unchanged.
+ */
+export function parseLocalDate(dateStr) {
+  if (!dateStr) return new Date(NaN)
+  const s = String(dateStr)
+  if (s.includes('T')) return new Date(s)
+  return new Date(s + 'T00:00:00')
+}
+
+// ============================================
 // FORMATTING HELPERS
 // ============================================
 
